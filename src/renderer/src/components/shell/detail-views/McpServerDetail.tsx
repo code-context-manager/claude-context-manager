@@ -36,7 +36,7 @@ export function McpServerDetail({ source }: Props) {
 
   return (
     <div className="flex flex-col">
-      <DetailHeader eyebrow="MCP Server" title={source.name} tokens={source.tokenEstimate} />
+      <DetailHeader eyebrow="MCP Server" tokens={source.tokenEstimate} />
 
       {scopeBlurb && (
         <DetailSection title="Scope">

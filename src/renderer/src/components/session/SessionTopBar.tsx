@@ -1,8 +1,6 @@
 import { useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import type { SessionSummary, UsageInfo } from '../../../../core/types'
-import { useStore } from '../../store'
-import { buildImproveSessionPrompt } from '../../../../prompts/improve-session'
 
 interface Props {
   sessions: SessionSummary[]
@@ -40,18 +38,8 @@ export function SessionTopBar({
       usage.outputTokens
     : 0
 
-  const currentProject = useStore((s) => s.currentProject)
-  const showToast = useStore((s) => s.showToast)
-
-  const handleCopyImprovePrompt = async () => {
-    await navigator.clipboard.writeText(buildImproveSessionPrompt(currentProject))
-    showToast(
-      'Prompt copied. Paste it into a new Claude Code chat so a fresh session can review the one you are inspecting.',
-    )
-  }
-
   return (
-    <div className="px-6 py-3 border-b border-edge flex items-center gap-4">
+    <div className="flex items-center gap-4">
       <div className="flex items-center gap-2 min-w-0 flex-1">
         <label className="text-[10px] uppercase tracking-wider text-content-muted shrink-0">Session</label>
         <select
@@ -83,14 +71,6 @@ export function SessionTopBar({
         userMessages={userMessages}
         assistantTurns={assistantTurns}
       />
-
-      <button
-        onClick={handleCopyImprovePrompt}
-        title="Copy a prompt that asks Claude to review what loaded for this session and suggest setup improvements"
-        className="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium border border-edge bg-surface-sidebar hover:bg-surface-hover hover:border-content-muted text-content-secondary hover:text-content-primary transition-colors"
-      >
-        Improve…
-      </button>
     </div>
   )
 }

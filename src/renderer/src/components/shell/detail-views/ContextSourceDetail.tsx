@@ -4,6 +4,7 @@ import { useFileContent } from '../../../hooks/useFileContent'
 import { FileOpenMenu } from '../../common/FileOpenMenu'
 import { DetailHeader } from '../../common/DetailHeader'
 import { DetailSection } from '../../common/DetailSection'
+import { FilePreview } from '../../common/FilePreview'
 import { McpServerDetail } from './McpServerDetail'
 
 interface Props {
@@ -33,58 +34,14 @@ export function ContextSourceDetail({ source }: Props) {
 
   return (
     <div className="flex flex-col">
-      <DetailHeader
-        eyebrow={TYPE_LABELS[source.type]}
-        title={source.name}
-        subtitle={source.filePath}
-        subtitleMono
-        tokens={source.tokenEstimate}
-      />
-
-      {source.pathGlobs && source.pathGlobs.length > 0 && (
-        <DetailSection title="Trigger paths">
-          <div className="flex flex-col gap-1">
-            {source.pathGlobs.map((glob) => (
-              <code
-                key={glob}
-                className="text-xs bg-surface-raised px-2 py-1 rounded text-content-secondary font-mono"
-              >
-                {glob}
-              </code>
-            ))}
-          </div>
-        </DetailSection>
-      )}
-
-      {source.description && (
-        <DetailSection title="Description">
-          <p className="text-xs text-content-secondary">{source.description}</p>
-        </DetailSection>
-      )}
-
-      {source.scopePath && (
-        <DetailSection title="Scoped to">
-          <code className="text-xs bg-surface-raised px-2 py-1 rounded text-content-secondary font-mono">
-            {source.scopePath}
-          </code>
-        </DetailSection>
-      )}
+      <DetailHeader eyebrow={TYPE_LABELS[source.type]} />
 
       <DetailSection>
         <FileOpenMenu filePath={source.filePath} />
       </DetailSection>
 
       <DetailSection title="Preview" last>
-        {loading ? (
-          <p className="text-xs text-content-muted">Loading…</p>
-        ) : content ? (
-          <pre className="text-xs text-content-secondary whitespace-pre-wrap font-mono leading-relaxed">
-            {content.slice(0, 4000)}
-            {content.length > 4000 && '\n\n…truncated…'}
-          </pre>
-        ) : (
-          <p className="text-xs text-content-muted">Could not read file.</p>
-        )}
+        <FilePreview filePath={source.filePath} content={content} loading={loading} />
       </DetailSection>
     </div>
   )

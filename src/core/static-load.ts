@@ -11,7 +11,7 @@ import {
 import { getGlobalClaudeMdPath, getProjectMemoryPath } from './path-utils'
 import { parseRuleFrontmatter } from './claude-parser'
 import { folderChain } from './folder-chain'
-import { matchAnyGlob } from './glob-match'
+import { firstMatchingGlob } from './glob-match'
 import { splitMemoryWindow } from './memory-window'
 import { discoverMcpServers } from './mcp-discovery'
 
@@ -56,6 +56,7 @@ export async function computeProjectStaticLoad(
       label: '~/.claude/CLAUDE.md',
       tokens: estimateTokens(globalMd),
       filePath: globalMdPath,
+      via: { kind: 'global-claude-md' },
     })
   }
 
@@ -68,6 +69,7 @@ export async function computeProjectStaticLoad(
       label: 'Project CLAUDE.md',
       tokens: estimateTokens(projectMd),
       filePath: projectMdPath,
+      via: { kind: 'project-claude-md' },
     })
   }
 
@@ -84,6 +86,7 @@ export async function computeProjectStaticLoad(
       note: split.hasOverflow
         ? `loaded window only — ${split.totalLines} lines, ${(split.totalBytes / 1024).toFixed(1)}KB total (overflow not loaded)`
         : `${split.totalLines} lines, ${(split.totalBytes / 1024).toFixed(1)}KB`,
+      via: { kind: 'memory' },
     })
   }
 
@@ -104,6 +107,7 @@ export async function computeProjectStaticLoad(
         tokens: estimateTokens(content),
         filePath: rulePath,
         alwaysApply: true,
+        via: { kind: 'rule-always-apply', rulePath },
       })
     }
   }
@@ -121,6 +125,7 @@ export async function computeProjectStaticLoad(
       tokens: MCP_INDEX_TOKENS,
       filePath: server.sourceFile,
       note: 'Descriptions loaded at session start',
+      via: { kind: 'mcp-index', server: server.name, sourceFile: server.sourceFile },
     })
   }
 
@@ -162,6 +167,7 @@ export async function computeFileStaticLoad(
       tokens: estimateTokens(body),
       filePath: chainMd,
       triggeredBy: absFile,
+      via: { kind: 'folder-claude-md', chainDir: dir },
     })
   }
 
@@ -179,7 +185,8 @@ export async function computeFileStaticLoad(
       if (meta.alwaysApply === true) continue
       const globs = meta.paths ?? []
       if (globs.length === 0) continue
-      if (!matchAnyGlob(globs, relTarget)) continue
+      const matched = firstMatchingGlob(globs, relTarget)
+      if (!matched) continue
       entries.push({
         kind: 'rule',
         scope: 'file',
@@ -188,6 +195,7 @@ export async function computeFileStaticLoad(
         filePath: rulePath,
         pathGlobs: globs,
         triggeredBy: absFile,
+        via: { kind: 'rule-glob', rulePath, matchedGlob: matched },
       })
     }
   }

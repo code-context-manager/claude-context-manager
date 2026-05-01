@@ -197,6 +197,10 @@ export interface StaticLoadEntry {
   triggeredBy?: string
   /** Free-form annotation (e.g. MEMORY.md overflow stats). */
   note?: string
+  /** Structured reason this entry is part of the load. Mirrored onto
+   *  `LoadReason.via` so the session view can group loaded files by the
+   *  rule/source that pulled each one in. */
+  via?: LoadVia
 }
 
 export interface StaticLoadResult {
@@ -240,11 +244,26 @@ export type LoadMechanism =
  * See docs/decisions for the building-blocks split: project inventory,
  * project-static load, file-static load, active session.
  */
+/**
+ * What specifically caused a static load — the rule or built-in mechanism
+ * Claude Code uses, not just "this file is loaded." Mirrored onto
+ * `StaticLoadEntry.via` so the UI can group loaded files by the rule/source
+ * that pulled them in instead of dumping a flat path list.
+ */
+export type LoadVia =
+  | { kind: 'global-claude-md' }
+  | { kind: 'project-claude-md' }
+  | { kind: 'folder-claude-md'; chainDir: string }
+  | { kind: 'memory' }
+  | { kind: 'rule-always-apply'; rulePath: string }
+  | { kind: 'rule-glob'; rulePath: string; matchedGlob: string }
+  | { kind: 'mcp-index'; server: string; sourceFile: string }
+
 export type LoadReason =
   | { kind: 'system' }
-  | { kind: 'global-static' }
-  | { kind: 'project-static' }
-  | { kind: 'file-static'; triggeredBy: string }
+  | { kind: 'global-static'; via: LoadVia }
+  | { kind: 'project-static'; via: LoadVia }
+  | { kind: 'file-static'; triggeredBy: string; via: LoadVia }
   | { kind: 'tool-call'; tool: 'read' | 'edit' | 'write'; lineIndex: number }
 
 export interface LoadedFile {

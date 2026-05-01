@@ -11,7 +11,7 @@ interface Props {
 export function NonFsSectionDetail({ section, snapshot }: Props) {
   return (
     <div className="flex flex-col">
-      <DetailHeader eyebrow="Section" title={labelFor(section)} />
+      <DetailHeader eyebrow={labelFor(section)} />
       <DetailSection last>
         <div className="text-xs text-content-secondary">
           {section === 'messages' && <Messages snapshot={snapshot} />}

@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu } from 'electron'
 import { join } from 'path'
 import { registerIpcHandlers, setProjectPath } from './ipc-handlers'
 import { startWatching, stopWatching, startSessionListWatch } from './file-watcher'
+import { initAutoUpdater } from './auto-updater'
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -124,6 +125,7 @@ app.whenReady().then(() => {
   buildMenu(win)
   startWatching(projectPath, win)
   startSessionListWatch(projectPath, win)
+  initAutoUpdater()
 })
 
 app.on('window-all-closed', () => {

@@ -74,9 +74,15 @@ interface AppState {
   // from one page into another's drawer.
   detailSelections: Partial<Record<AppMode, DetailSelection>>
   detailOpen: boolean
+  detailWidth: number
   setDetailSelection: (selection: DetailSelection | null) => void
   toggleDetail: () => void
   setDetailOpen: (open: boolean) => void
+  setDetailWidth: (width: number) => void
+
+  // Persisted left-column widths (file picker, entry list, etc.) per page.
+  leftWidths: Partial<Record<AppMode, number>>
+  setLeftWidth: (mode: AppMode, width: number) => void
 
   themeMode: ThemeMode
   setThemeMode: (mode: ThemeMode) => void
@@ -116,6 +122,10 @@ export const useStore = create<AppState>((set) => ({
 
   detailSelections: {},
   detailOpen: true,
+  detailWidth: (() => {
+    const stored = Number(localStorage.getItem('ccm-detail-width'))
+    return Number.isFinite(stored) && stored >= 200 ? stored : 480
+  })(),
   setDetailSelection: (selection) =>
     set((s) => {
       if (!selection) return { detailSelections: {} }
@@ -127,6 +137,27 @@ export const useStore = create<AppState>((set) => ({
     }),
   toggleDetail: () => set((s) => ({ detailOpen: !s.detailOpen })),
   setDetailOpen: (detailOpen) => set({ detailOpen }),
+  setDetailWidth: (detailWidth) => {
+    localStorage.setItem('ccm-detail-width', String(detailWidth))
+    set({ detailWidth })
+  },
+
+  leftWidths: (() => {
+    try {
+      const raw = localStorage.getItem('ccm-left-widths')
+      if (!raw) return {}
+      const parsed = JSON.parse(raw)
+      return typeof parsed === 'object' && parsed !== null ? parsed : {}
+    } catch {
+      return {}
+    }
+  })(),
+  setLeftWidth: (mode, width) =>
+    set((s) => {
+      const next = { ...s.leftWidths, [mode]: width }
+      localStorage.setItem('ccm-left-widths', JSON.stringify(next))
+      return { leftWidths: next }
+    }),
 
   themeMode: (localStorage.getItem('ccm-theme') as ThemeMode) || 'system',
   setThemeMode: (themeMode) => set({ themeMode }),

@@ -181,13 +181,32 @@ export function describeReason(r: LoadReason): string {
     case 'tool-call':
       return `Tool call: ${r.tool} (line ${r.lineIndex})`
     case 'file-static':
-      return `Pulled in by: ${r.triggeredBy}`
+      return `Pulled in by ${r.triggeredBy} — ${describeVia(r.via)}`
     case 'project-static':
-      return 'Auto-loaded for any session in this project'
+      return `Project-wide — ${describeVia(r.via)}`
     case 'global-static':
-      return 'Auto-loaded globally (every session everywhere)'
+      return `Global — ${describeVia(r.via)}`
     case 'system':
       return 'Synthetic system content'
+  }
+}
+
+function describeVia(v: import('../../../../core/types').LoadVia): string {
+  switch (v.kind) {
+    case 'global-claude-md':
+      return '~/.claude/CLAUDE.md'
+    case 'project-claude-md':
+      return 'project CLAUDE.md'
+    case 'folder-claude-md':
+      return `folder CLAUDE.md (${v.chainDir})`
+    case 'memory':
+      return 'MEMORY.md'
+    case 'rule-always-apply':
+      return `always-apply rule (${v.rulePath})`
+    case 'rule-glob':
+      return `rule ${v.rulePath} matched ${v.matchedGlob}`
+    case 'mcp-index':
+      return `MCP server ${v.server}`
   }
 }
 

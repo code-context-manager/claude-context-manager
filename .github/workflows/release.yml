@@ -1,0 +1,222 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release-mac:
+    # Single job builds BOTH arm64 and x64 in one electron-builder invocation.
+    # Splitting them across jobs corrupts latest-mac.yml — each --publish overwrites
+    # the previous, leaving only one arch listed and routing the wrong dmg to users
+    # via electron-updater. One invocation produces a single yml listing both arches.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --no-frozen-lockfile
+
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: pnpm pkg set version="${GITHUB_REF#refs/tags/v}"
+
+      - run: pnpm build
+
+      - name: Verify build outputs
+        run: |
+          test -f out/main/index.js
+          test -f out/preload/index.js
+          test -f out/renderer/index.html
+          test -f out/mcp/index.mjs
+
+      - name: Package & publish (macOS arm64 + x64)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm dist:mac
+
+      - name: Verify latest-mac.yml lists both arches
+        run: |
+          set -euo pipefail
+          YML=release/latest-mac.yml
+          test -f "$YML" || { echo "::error::missing $YML"; exit 1; }
+          cat "$YML"
+          grep -q -- '-arm64\.dmg' "$YML" || { echo "::error::latest-mac.yml missing arm64 dmg — arm64 users would auto-update to x64 build"; exit 1; }
+          grep -q -- '-x64\.dmg'   "$YML" || { echo "::error::latest-mac.yml missing x64 dmg — x64 users would auto-update to arm64 build"; exit 1; }
+
+  release-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --no-frozen-lockfile
+
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: pnpm pkg set version="${GITHUB_REF#refs/tags/v}"
+
+      - run: pnpm build
+
+      - name: Verify build outputs
+        shell: bash
+        run: |
+          test -f out/main/index.js
+          test -f out/preload/index.js
+          test -f out/renderer/index.html
+          test -f out/mcp/index.mjs
+
+      - name: Package & publish (Windows)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm dist:win
+
+  release-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --no-frozen-lockfile
+
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: pnpm pkg set version="${GITHUB_REF#refs/tags/v}"
+
+      - run: pnpm build
+
+      - name: Verify build outputs
+        run: |
+          test -f out/main/index.js
+          test -f out/preload/index.js
+          test -f out/renderer/index.html
+          test -f out/mcp/index.mjs
+
+      - name: Package & publish (Linux)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm dist:linux
+
+  bump-package-managers:
+    needs: [release-mac, release-win, release-linux]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compute version + asset hashes
+        id: meta
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}"
+
+          mkdir tmp && cd tmp
+          curl -sSLO "$BASE/claude-context-manager-${VERSION}-arm64.dmg"
+          curl -sSLO "$BASE/claude-context-manager-${VERSION}-x64.dmg"
+          curl -sSLO "$BASE/claude-context-manager-${VERSION}-x64.zip"
+
+          SHA_MAC_ARM=$(sha256sum "claude-context-manager-${VERSION}-arm64.dmg" | cut -d' ' -f1)
+          SHA_MAC_X64=$(sha256sum "claude-context-manager-${VERSION}-x64.dmg" | cut -d' ' -f1)
+          SHA_WIN_ZIP=$(sha256sum "claude-context-manager-${VERSION}-x64.zip" | cut -d' ' -f1)
+
+          {
+            echo "version=$VERSION"
+            echo "sha_mac_arm=$SHA_MAC_ARM"
+            echo "sha_mac_x64=$SHA_MAC_X64"
+            echo "sha_win_zip=$SHA_WIN_ZIP"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Update Homebrew tap
+        env:
+          GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          SHA_MAC_ARM: ${{ steps.meta.outputs.sha_mac_arm }}
+          SHA_MAC_X64: ${{ steps.meta.outputs.sha_mac_x64 }}
+        run: |
+          set -euo pipefail
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/code-context-manager/homebrew-tap.git" tap
+          cd tap
+          mkdir -p Casks
+          cat > Casks/claude-context-manager.rb <<EOF
+          cask "claude-context-manager" do
+            version "${VERSION}"
+
+            on_arm do
+              sha256 "${SHA_MAC_ARM}"
+              url "https://github.com/code-context-manager/claude-context-manager/releases/download/v#{version}/claude-context-manager-#{version}-arm64.dmg"
+            end
+            on_intel do
+              sha256 "${SHA_MAC_X64}"
+              url "https://github.com/code-context-manager/claude-context-manager/releases/download/v#{version}/claude-context-manager-#{version}-x64.dmg"
+            end
+
+            name "Claude Context Manager"
+            desc "Context-driven development for Claude Code"
+            homepage "https://github.com/code-context-manager/claude-context-manager"
+
+            auto_updates true
+
+            app "Claude Context Manager.app"
+
+            zap trash: [
+              "~/Library/Application Support/Claude Context Manager",
+              "~/Library/Preferences/com.claudecontextmanager.app.plist",
+              "~/Library/Saved Application State/com.claudecontextmanager.app.savedState",
+            ]
+          end
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/claude-context-manager.rb
+          git commit -m "claude-context-manager ${VERSION}"
+          git push
+
+      - name: Update Scoop bucket
+        env:
+          GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          SHA_WIN_ZIP: ${{ steps.meta.outputs.sha_win_zip }}
+        run: |
+          set -euo pipefail
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/code-context-manager/scoop-bucket.git" bucket
+          cd bucket
+          cat > claude-context-manager.json <<EOF
+          {
+            "version": "${VERSION}",
+            "description": "Context-driven development for Claude Code",
+            "homepage": "https://github.com/code-context-manager/claude-context-manager",
+            "license": "ISC",
+            "url": "https://github.com/code-context-manager/claude-context-manager/releases/download/v${VERSION}/claude-context-manager-${VERSION}-x64.zip",
+            "hash": "${SHA_WIN_ZIP}",
+            "bin": "Claude Context Manager.exe",
+            "shortcuts": [
+              ["Claude Context Manager.exe", "Claude Context Manager"]
+            ],
+            "checkver": "github",
+            "autoupdate": {
+              "url": "https://github.com/code-context-manager/claude-context-manager/releases/download/v\$version/claude-context-manager-\$version-x64.zip"
+            }
+          }
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add claude-context-manager.json
+          git commit -m "claude-context-manager ${VERSION}"
+          git push

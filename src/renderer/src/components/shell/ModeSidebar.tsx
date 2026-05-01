@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react'
-import { BookOpen, Clock, Home, List, Search } from 'lucide-react'
+import { Clock, Home, List, Search } from 'lucide-react'
 import type { AppMode } from '../../../../core/types'
 
 interface ModeSidebarProps {
@@ -41,12 +41,6 @@ const MODES: ModeDef[] = [
     label: 'Session',
     hint: 'Past sessions — what did load',
     icon: <Clock className={ICON_CLASS} strokeWidth={ICON_STROKE} />,
-  },
-  {
-    id: 'playbook',
-    label: 'Playbook',
-    hint: 'What context your repo could have',
-    icon: <BookOpen className={ICON_CLASS} strokeWidth={ICON_STROKE} />,
   },
 ]
 

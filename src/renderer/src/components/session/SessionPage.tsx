@@ -2,6 +2,8 @@ import { useCallback, useEffect } from 'react'
 import { useStore } from '../../store'
 import { SessionTopBar } from './SessionTopBar'
 import { SessionFileTree } from './SessionFileTree'
+import { PageShell, PageDetailDrawer } from '../shell/PageShell'
+import { buildImproveSessionPrompt } from '../../../../prompts/improve-session'
 
 /**
  * Session answers "what is currently loaded in my active Claude Code session
@@ -20,8 +22,8 @@ export function SessionPage() {
   const setSessionLoading = useStore((s) => s.setSessionLoading)
   const selection = useStore((s) => s.detailSelections.session ?? null)
   const setDetailSelection = useStore((s) => s.setDetailSelection)
+  const showToast = useStore((s) => s.showToast)
 
-  // Load session list + pick latest on project change.
   useEffect(() => {
     if (!currentProject) {
       setSessions([])
@@ -46,7 +48,6 @@ export function SessionPage() {
     }
   }, [currentProject, setSessions, setSessionId, setSessionView, setSessionLoading])
 
-  // Fetch view for current session.
   useEffect(() => {
     if (!sessionId) {
       setSessionView(null)
@@ -65,7 +66,6 @@ export function SessionPage() {
     }
   }, [sessionId, setSessionView, setSessionLoading])
 
-  // Subscribe to live updates.
   useEffect(() => {
     const off = window.api.onSessionUpdate((id) => {
       if (id !== sessionId) return
@@ -74,8 +74,6 @@ export function SessionPage() {
     return off
   }, [sessionId, setSessionView])
 
-  // Refresh the session list when a new JSONL appears (new chat started).
-  // If the user was on the previous latest, follow forward to the new one.
   useEffect(() => {
     if (!currentProject) return
     const off = window.api.onSessionListUpdate(async () => {
@@ -93,10 +91,10 @@ export function SessionPage() {
     return off
   }, [currentProject, sessions, sessionId, setSessions, setSessionId])
 
-  // Manual refresh: re-pull both the session list and the current view.
   // fs.watch on macOS misses events for atomically-replaced files and silently
-  // fails when the JSONL didn't exist yet at watch-setup time — this is the
-  // escape hatch. Calling getSessionView also re-arms the per-session watcher.
+  // fails when the JSONL didn't exist yet at watch-setup time — manual refresh
+  // is the escape hatch. Calling getSessionView also re-arms the per-session
+  // watcher.
   const refresh = useCallback(async () => {
     if (!currentProject) return
     const [list, latest] = await Promise.all([
@@ -112,8 +110,6 @@ export function SessionPage() {
     }
   }, [currentProject, sessionId, setSessions, setSessionId, setSessionView])
 
-  // Refresh when the window regains visibility — fs.watch may have missed
-  // events while the app was backgrounded.
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === 'visible') void refresh()
@@ -122,41 +118,62 @@ export function SessionPage() {
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [refresh])
 
+  const handleCopyImprovePrompt = async () => {
+    await navigator.clipboard.writeText(buildImproveSessionPrompt(currentProject))
+    showToast(
+      'Prompt copied. Paste it into a new Claude Code chat so a fresh session can review the one you are inspecting.',
+    )
+  }
+
   const selectedPath =
     selection?.kind === 'session-file' ? selection.node.path : null
   const selectedNonFs =
     selection?.kind === 'session-non-fs' ? selection.section : null
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-      <SessionTopBar
-        sessions={sessions}
-        sessionId={sessionId}
-        onSelect={setSessionId}
-        usage={sessionView?.snapshot.lastUsage ?? null}
-        model={sessionView?.snapshot.model ?? null}
-        userMessages={sessionView?.snapshot.messages.userCount ?? 0}
-        assistantTurns={sessionView?.snapshot.messages.assistantCount ?? 0}
-        onRefresh={refresh}
-      />
-      <div className="flex-1 flex overflow-hidden min-w-0">
-        <main className="flex-1 flex flex-col overflow-hidden min-w-0">
-          {loading && !sessionView ? (
-            <div className="px-6 py-4 text-xs text-content-muted">Loading session…</div>
-          ) : !sessionView ? (
-            <div className="px-6 py-4 text-xs text-content-muted">No session selected.</div>
-          ) : (
-            <SessionFileTree
-              tree={sessionView.tree}
-              snapshot={sessionView.snapshot}
-              selectedPath={selectedPath}
-              selectedNonFs={selectedNonFs}
-              onSelect={(node) => setDetailSelection({ kind: 'session-file', node })}
-              onSelectNonFs={(section) => setDetailSelection({ kind: 'session-non-fs', section })}
-            />
-          )}
-        </main>
-      </div>
-    </div>
+    <PageShell
+      title="Session"
+      description="Live snapshot of context loaded in the active Claude Code session for this project."
+      actions={
+        <button
+          onClick={handleCopyImprovePrompt}
+          title="Copy a prompt that asks Claude to review what loaded for this session and suggest setup improvements"
+          className="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium border border-edge bg-surface-sidebar hover:bg-surface-hover hover:border-content-muted text-content-secondary hover:text-content-primary transition-colors"
+        >
+          Improve…
+        </button>
+      }
+      toolbar={
+        <SessionTopBar
+          sessions={sessions}
+          sessionId={sessionId}
+          onSelect={setSessionId}
+          usage={sessionView?.snapshot.lastUsage ?? null}
+          model={sessionView?.snapshot.model ?? null}
+          userMessages={sessionView?.snapshot.messages.userCount ?? 0}
+          assistantTurns={sessionView?.snapshot.messages.assistantCount ?? 0}
+          onRefresh={refresh}
+        />
+      }
+      main={
+        loading && !sessionView ? (
+          <div className="px-6 py-4 text-xs text-content-muted">Loading session…</div>
+        ) : !sessionView ? (
+          <div className="px-6 py-4 text-xs text-content-muted">No session selected.</div>
+        ) : (
+          <SessionFileTree
+            tree={sessionView.tree}
+            snapshot={sessionView.snapshot}
+            selectedPath={selectedPath}
+            selectedNonFs={selectedNonFs}
+            onSelect={(node) => setDetailSelection({ kind: 'session-file', node })}
+            onSelectNonFs={(section) =>
+              setDetailSelection({ kind: 'session-non-fs', section })
+            }
+          />
+        )
+      }
+      detail={<PageDetailDrawer />}
+    />
   )
 }

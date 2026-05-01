@@ -94,13 +94,22 @@ export function matchGlob(glob: string, relPath: string): boolean {
  * trigger).
  */
 export function matchAnyGlob(globs: string[], relPath: string): boolean {
-  if (globs.length === 0) return false
+  return firstMatchingGlob(globs, relPath) !== null
+}
+
+/**
+ * Like `matchAnyGlob` but returns the first positive glob that matched (or
+ * null if none). Used by the static-load builder to record *which* glob from
+ * a rule's frontmatter caused the trigger, so the UI can attribute the load.
+ */
+export function firstMatchingGlob(globs: string[], relPath: string): string | null {
+  if (globs.length === 0) return null
   const positives = globs.filter((g) => !g.trim().startsWith('!'))
   const negatives = globs.filter((g) => g.trim().startsWith('!'))
 
-  if (positives.length === 0) return false
-  const matched = positives.some((g) => matchGlob(g, relPath))
-  if (!matched) return false
-  // For exclusion we need the raw pattern match (without the `!` flip).
-  return !negatives.some((g) => matchGlob(g.trim().slice(1), relPath))
+  if (positives.length === 0) return null
+  const hit = positives.find((g) => matchGlob(g, relPath))
+  if (!hit) return null
+  if (negatives.some((g) => matchGlob(g.trim().slice(1), relPath))) return null
+  return hit
 }

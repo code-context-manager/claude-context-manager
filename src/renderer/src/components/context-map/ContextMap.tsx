@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { ContextScope, ContextSource } from '../../../../core/types'
 import { ContextType } from '../../../../core/types'
-import { ContextItem } from './ContextItem'
-import { Chevron } from '../common/Chevron'
+import { TreeRow } from '../common/TreeRow'
 import { formatTokens } from '../common/format'
 
 interface ContextMapProps {
@@ -38,6 +37,17 @@ const TYPE_LABELS: Record<ContextType, string> = {
   [ContextType.Settings]: 'Settings',
 }
 
+const TYPE_DOT: Record<ContextType, string> = {
+  [ContextType.GlobalClaudeMd]: 'bg-accent-blue',
+  [ContextType.ProjectClaudeMd]: 'bg-blue-400',
+  [ContextType.FolderClaudeMd]: 'bg-blue-300',
+  [ContextType.Rule]: 'bg-accent-amber',
+  [ContextType.Skill]: 'bg-accent-emerald',
+  [ContextType.Memory]: 'bg-accent-purple',
+  [ContextType.McpServer]: 'bg-accent-rose',
+  [ContextType.Settings]: 'bg-content-muted',
+}
+
 function emptyHint(type: ContextType, scope: ContextScope): string {
   switch (type) {
     case ContextType.ProjectClaudeMd:
@@ -69,14 +79,11 @@ interface Group {
 
 interface ScopeBlock {
   scope: ContextScope
-  label: string
-  totalTokens: number
   groups: Group[]
 }
 
 function buildScopeBlock(
   scope: ContextScope,
-  label: string,
   order: ContextType[],
   bucket: Map<ContextType, ContextSource[]>,
 ): ScopeBlock {
@@ -97,128 +104,110 @@ function buildScopeBlock(
       tokens: folderSources.reduce((sum, s) => sum + s.tokenEstimate, 0),
     })
   }
-  return {
-    scope,
-    label,
-    totalTokens: groups.reduce((sum, g) => sum + g.tokens, 0),
-    groups,
-  }
+  return { scope, groups }
 }
 
 export function ContextMap({ sources, selectedPath, onSelect }: ContextMapProps) {
-  const blocks = useMemo<ScopeBlock[]>(() => {
-    const project = new Map<ContextType, ContextSource[]>()
-    const global = new Map<ContextType, ContextSource[]>()
+  const { project, global } = useMemo(() => {
+    const projectBucket = new Map<ContextType, ContextSource[]>()
+    const globalBucket = new Map<ContextType, ContextSource[]>()
     for (const source of sources) {
-      const bucket = source.scope === 'global' ? global : project
+      const bucket = source.scope === 'global' ? globalBucket : projectBucket
       const list = bucket.get(source.type) ?? []
       list.push(source)
       bucket.set(source.type, list)
     }
-    return [
-      buildScopeBlock('project', 'Project', PROJECT_TYPE_ORDER, project),
-      buildScopeBlock('global', 'Global', GLOBAL_TYPE_ORDER, global),
-    ]
+    return {
+      project: buildScopeBlock('project', PROJECT_TYPE_ORDER, projectBucket),
+      global: buildScopeBlock('global', GLOBAL_TYPE_ORDER, globalBucket),
+    }
   }, [sources])
 
-  const [openScopes, setOpenScopes] = useState<Record<ContextScope, boolean>>({
-    project: true,
-    global: false,
-  })
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
-
-  const toggleScope = (scope: ContextScope) => {
-    setOpenScopes((prev) => ({ ...prev, [scope]: !prev[scope] }))
-  }
-
-  const toggleGroup = (key: string) => {
-    setCollapsedGroups((prev) => {
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const toggle = (key: string) =>
+    setCollapsed((prev) => {
       const next = new Set(prev)
       if (next.has(key)) next.delete(key)
       else next.add(key)
       return next
     })
-  }
 
   return (
-    <nav className="flex flex-col gap-2 p-3">
-      {blocks.map((block) => {
-        const open = openScopes[block.scope]
-        return (
-          <section
-            key={block.scope}
-            className="border border-edge rounded-lg overflow-hidden bg-surface-sidebar"
-          >
-            <button
-              type="button"
-              onClick={() => toggleScope(block.scope)}
-              className="w-full px-3 py-2 flex items-center gap-2 hover:bg-surface-hover transition-colors"
-            >
-              <Chevron open={open} size="md" />
-              <span className="text-xs font-medium uppercase tracking-wider text-content-primary flex-1 text-left">
-                {block.label}
-              </span>
-              <span className="text-xs text-content-muted">
-                {formatTokens(block.totalTokens)} tok
-              </span>
-            </button>
-            {open && (
-              <div className="px-2 py-1.5 border-t border-edge flex flex-col gap-0.5">
-                {block.groups.map((group) => {
-                  const key = `${block.scope}:${group.type}`
-                  const isEmpty = group.sources.length === 0
-                  const groupOpen = !collapsedGroups.has(key)
-                  return (
-                    <div key={key}>
-                      {isEmpty ? (
-                        <div className="px-2 py-1 flex items-center gap-2">
-                          <span className="w-3 h-3 shrink-0" />
-                          <span className="text-xs font-medium text-content-muted/60 uppercase tracking-wider flex-1 text-left">
-                            {TYPE_LABELS[group.type]} (0)
-                          </span>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => toggleGroup(key)}
-                          className="w-full px-2 py-1 flex items-center gap-2 hover:bg-surface-hover rounded-md transition-colors"
-                        >
-                          <Chevron open={groupOpen} size="sm" />
-                          <span className="text-xs font-medium text-content-muted uppercase tracking-wider flex-1 text-left">
-                            {TYPE_LABELS[group.type]} ({group.sources.length})
-                          </span>
-                          <span className="text-xs text-content-muted">
-                            ~{group.tokens.toLocaleString()}t
-                          </span>
-                        </button>
-                      )}
-                      {isEmpty ? (
-                        <p className="ml-5 mr-2 mb-1 text-xs text-content-muted/60 italic">
-                          {emptyHint(group.type, block.scope)}
-                        </p>
-                      ) : (
-                        groupOpen && (
-                          <div className="flex flex-col gap-0.5 ml-3 mt-0.5 mb-1">
-                            {group.sources.map((source) => (
-                              <ContextItem
-                                key={source.filePath + source.name}
-                                source={source}
-                                selected={selectedPath === source.filePath}
-                                onSelect={() => onSelect(source)}
-                              />
-                            ))}
-                          </div>
-                        )
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </section>
-        )
-      })}
-    </nav>
+    <div className="flex-1 overflow-y-auto text-xs font-mono">
+      <ScopeGroups
+        block={project}
+        selectedPath={selectedPath}
+        onSelect={onSelect}
+        collapsed={collapsed}
+        toggle={toggle}
+      />
+      <div className="mt-4">
+        <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-content-muted">
+          Global
+        </div>
+        <ScopeGroups
+          block={global}
+          selectedPath={selectedPath}
+          onSelect={onSelect}
+          collapsed={collapsed}
+          toggle={toggle}
+        />
+      </div>
+    </div>
   )
 }
 
+interface ScopeGroupsProps {
+  block: ScopeBlock
+  selectedPath: string | null
+  onSelect: (source: ContextSource) => void
+  collapsed: Set<string>
+  toggle: (key: string) => void
+}
+
+function ScopeGroups({ block, selectedPath, onSelect, collapsed, toggle }: ScopeGroupsProps) {
+  return (
+    <>
+      {block.groups.map((group) => {
+        const key = `${block.scope}:${group.type}`
+        const isEmpty = group.sources.length === 0
+        const open = !collapsed.has(key)
+        return (
+          <div key={key}>
+            <TreeRow
+              depth={0}
+              chevron={isEmpty ? 'none' : open ? 'open' : 'closed'}
+              onClick={isEmpty ? undefined : () => toggle(key)}
+              title={isEmpty ? emptyHint(group.type, block.scope) : undefined}
+            >
+              <span className={isEmpty ? 'text-content-muted/60' : 'text-content-secondary'}>
+                {TYPE_LABELS[group.type]}
+              </span>
+              <span className="ml-auto flex items-center gap-2 text-[10px] text-content-muted tabular-nums">
+                <span>{group.sources.length}</span>
+                {group.tokens > 0 && <span>{formatTokens(group.tokens)}</span>}
+              </span>
+            </TreeRow>
+            {open &&
+              group.sources.map((source) => (
+                <TreeRow
+                  key={source.filePath + source.name}
+                  depth={1}
+                  chevron="none"
+                  selected={selectedPath === source.filePath}
+                  onClick={() => onSelect(source)}
+                  title={source.filePath}
+                >
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${TYPE_DOT[source.type]}`} />
+                  <span className="text-content-primary truncate">{source.name}</span>
+                  <span className="ml-auto text-[10px] text-content-muted tabular-nums">
+                    {formatTokens(source.tokenEstimate)}
+                  </span>
+                </TreeRow>
+              ))}
+          </div>
+        )
+      })}
+    </>
+  )
+}

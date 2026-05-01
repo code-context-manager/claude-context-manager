@@ -1,5 +1,6 @@
 import { useStore } from '../../store'
 import { ContextMap } from '../context-map/ContextMap'
+import { PageShell, PageDetailDrawer } from '../shell/PageShell'
 import { buildImproveInventoryPrompt } from '../../../../prompts/improve-inventory'
 
 /**
@@ -22,14 +23,10 @@ export function InventoryPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-      <div className="px-6 py-4 border-b border-edge flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-sm font-medium text-content-primary">Inventory</h1>
-          <p className="text-xs text-content-muted mt-0.5">
-            Context sources configured in this project.
-          </p>
-        </div>
+    <PageShell
+      title="Inventory"
+      description="Context sources configured in this project."
+      actions={
         <button
           onClick={handleCopyImprovePrompt}
           title="Copy a prompt that asks Claude to review and improve this project's context setup"
@@ -37,14 +34,17 @@ export function InventoryPage() {
         >
           Improve…
         </button>
-      </div>
-      <div className="flex-1 overflow-y-auto">
-        <ContextMap
-          sources={sources}
-          selectedPath={selectedPath}
-          onSelect={(source) => setDetailSelection({ kind: 'context-source', source })}
-        />
-      </div>
-    </div>
+      }
+      main={
+        <div className="flex-1 overflow-y-auto">
+          <ContextMap
+            sources={sources}
+            selectedPath={selectedPath}
+            onSelect={(source) => setDetailSelection({ kind: 'context-source', source })}
+          />
+        </div>
+      }
+      detail={<PageDetailDrawer />}
+    />
   )
 }

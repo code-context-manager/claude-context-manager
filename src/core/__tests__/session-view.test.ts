@@ -63,11 +63,15 @@ describe('buildSessionView — auto-loaded CLAUDE.md', () => {
     expect(chainPaths).toContain(globalClaudeMd)
 
     const projectEntry = view!.snapshot.files.find((f) => f.path === projectClaudeMd)
-    expect(projectEntry?.reasons).toEqual([{ kind: 'project-static' }])
+    expect(projectEntry?.reasons).toEqual([
+      { kind: 'project-static', via: { kind: 'project-claude-md' } },
+    ])
     expect(projectEntry?.tokens).toBeGreaterThan(0)
 
     const globalEntry = view!.snapshot.files.find((f) => f.path === globalClaudeMd)
-    expect(globalEntry?.reasons).toEqual([{ kind: 'global-static' }])
+    expect(globalEntry?.reasons).toEqual([
+      { kind: 'global-static', via: { kind: 'global-claude-md' } },
+    ])
   })
 
   it('does not duplicate CLAUDE.md when it was also explicitly read', async () => {
@@ -142,7 +146,11 @@ describe('buildSessionView — auto-loaded CLAUDE.md', () => {
     const folderEntry = view!.snapshot.files.find((f) => f.path === folderClaudeMd)
     expect(folderEntry).toBeDefined()
     expect(folderEntry?.reasons).toEqual([
-      { kind: 'file-static', triggeredBy: loadedFile },
+      {
+        kind: 'file-static',
+        triggeredBy: loadedFile,
+        via: { kind: 'folder-claude-md', chainDir: join(projectPath, 'src') },
+      },
     ])
   })
 

@@ -128,8 +128,8 @@ function NodeRow({ node, depth, selectedId, onSelect }: NodeRowProps) {
           <span
             className={`text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 ${
               node.state === 'certain'
-                ? 'bg-emerald-500/10 text-emerald-500'
-                : 'bg-amber-500/10 text-amber-500'
+                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+                : 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
             }`}
           >
             {node.state}

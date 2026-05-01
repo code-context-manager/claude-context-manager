@@ -1,20 +1,20 @@
 import { useState, useEffect, useRef } from 'react'
-import { ChevronDown, Folder, PanelRight } from 'lucide-react'
+import { ChevronDown, Folder, Sun, Moon, Monitor } from 'lucide-react'
 import type { Project } from '../../../../core/types'
+import { useStore } from '../../store'
+import { useTheme, type ThemeMode } from '../../hooks/useTheme'
 
 interface HeaderBarProps {
   currentProject: string | null
   onSwitchProject: (projectPath: string) => void
-  onToggleDetail: () => void
-  showDetailToggle: boolean
 }
 
 /**
- * Top draggable title bar with the active project selector on the left and
- * the detail-drawer toggle on the right. Project selection lives here
- * because Inventory/Probe/Session all scope to the active project atomically.
+ * Top draggable title bar with the active project selector. Project selection
+ * lives here because Inventory/Probe/Session all scope to the active project
+ * atomically.
  */
-export function HeaderBar({ currentProject, onSwitchProject, onToggleDetail, showDetailToggle }: HeaderBarProps) {
+export function HeaderBar({ currentProject, onSwitchProject }: HeaderBarProps) {
   const [projects, setProjects] = useState<Project[]>([])
   const [open, setOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -99,22 +99,40 @@ export function HeaderBar({ currentProject, onSwitchProject, onToggleDetail, sho
         )}
       </div>
 
-      {/* Right: drawer toggle */}
+      {/* Right: theme toggle (also balances the macOS traffic-light spacer) */}
       <div
         className="w-16 shrink-0 flex items-center justify-end"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
-        {showDetailToggle && (
-          <button
-            onClick={onToggleDetail}
-            className="p-1 rounded hover:bg-surface-hover text-content-muted transition-colors"
-            title="Toggle detail drawer (⌘I)"
-          >
-            <PanelRight className="w-4 h-4" strokeWidth={1.75} />
-          </button>
-        )}
+        <ThemeToggle />
       </div>
     </div>
+  )
+}
+
+function ThemeToggle() {
+  const themeMode = useStore((s) => s.themeMode)
+  const setThemeMode = useStore((s) => s.setThemeMode)
+  const { setMode: setThemeCssMode } = useTheme()
+
+  const order: ThemeMode[] = ['system', 'light', 'dark']
+  const next = order[(order.indexOf(themeMode) + 1) % order.length]
+
+  const Icon = themeMode === 'light' ? Sun : themeMode === 'dark' ? Moon : Monitor
+  const label = `Theme: ${themeMode} (click for ${next})`
+
+  return (
+    <button
+      onClick={() => {
+        setThemeMode(next)
+        setThemeCssMode(next)
+      }}
+      title={label}
+      aria-label={label}
+      className="p-1.5 rounded-md hover:bg-surface-hover text-content-muted hover:text-content-primary transition-colors"
+    >
+      <Icon className="w-4 h-4" strokeWidth={1.75} />
+    </button>
   )
 }
 

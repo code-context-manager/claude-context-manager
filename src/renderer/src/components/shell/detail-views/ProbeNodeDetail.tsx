@@ -3,6 +3,7 @@ import { useFileContent } from '../../../hooks/useFileContent'
 import { FileOpenMenu } from '../../common/FileOpenMenu'
 import { DetailHeader } from '../../common/DetailHeader'
 import { DetailSection } from '../../common/DetailSection'
+import { FilePreview } from '../../common/FilePreview'
 
 interface Props {
   node: ProbeNode
@@ -15,8 +16,8 @@ export function ProbeNodeDetail({ node }: Props) {
     <span
       className={`text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider ${
         node.state === 'certain'
-          ? 'bg-emerald-500/10 text-emerald-500'
-          : 'bg-amber-500/10 text-amber-500'
+          ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+          : 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
       }`}
     >
       {node.state}
@@ -25,26 +26,7 @@ export function ProbeNodeDetail({ node }: Props) {
 
   return (
     <div className="flex flex-col">
-      <DetailHeader
-        eyebrow={node.kind}
-        title={node.label}
-        subtitle={node.filePath}
-        subtitleMono
-        tokens={node.tokens}
-        badges={stateBadge}
-      />
-
-      {node.trigger && (
-        <DetailSection title="Trigger">
-          <p className="text-xs text-content-secondary">{node.trigger}</p>
-        </DetailSection>
-      )}
-
-      {node.note && (
-        <DetailSection title="Note">
-          <p className="text-xs text-content-secondary">{node.note}</p>
-        </DetailSection>
-      )}
+      <DetailHeader eyebrow={node.kind} badges={stateBadge} />
 
       {node.filePath && (
         <DetailSection>
@@ -54,16 +36,7 @@ export function ProbeNodeDetail({ node }: Props) {
 
       {node.filePath && (
         <DetailSection title="Preview" last>
-          {loading ? (
-            <p className="text-xs text-content-muted">Loading…</p>
-          ) : content ? (
-            <pre className="text-xs text-content-secondary whitespace-pre-wrap font-mono leading-relaxed">
-              {content.slice(0, 4000)}
-              {content.length > 4000 && '\n\n…truncated…'}
-            </pre>
-          ) : (
-            <p className="text-xs text-content-muted">Could not read file.</p>
-          )}
+          <FilePreview filePath={node.filePath} content={content} loading={loading} />
         </DetailSection>
       )}
     </div>

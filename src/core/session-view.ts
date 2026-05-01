@@ -125,9 +125,11 @@ function applyProjectStaticToFiles(
   result: StaticLoadResult,
 ): void {
   for (const e of result.entries) {
-    if (!e.filePath) continue
+    if (!e.filePath || !e.via) continue
     const reason: LoadReason =
-      e.scope === 'global' ? { kind: 'global-static' } : { kind: 'project-static' }
+      e.scope === 'global'
+        ? { kind: 'global-static', via: e.via }
+        : { kind: 'project-static', via: e.via }
     upsertEntry(snapshot, e, reason)
   }
   snapshot.files.sort((a, b) => a.path.localeCompare(b.path))
@@ -139,8 +141,8 @@ function applyFileStaticToFiles(
   triggeredBy: string,
 ): void {
   for (const e of result.entries) {
-    if (!e.filePath) continue
-    upsertEntry(snapshot, e, { kind: 'file-static', triggeredBy })
+    if (!e.filePath || !e.via) continue
+    upsertEntry(snapshot, e, { kind: 'file-static', triggeredBy, via: e.via })
   }
   snapshot.files.sort((a, b) => a.path.localeCompare(b.path))
 }
@@ -187,14 +189,43 @@ function hasReason(reasons: LoadReason[], r: LoadReason): boolean {
   for (const existing of reasons) {
     if (existing.kind !== r.kind) continue
     if (existing.kind === 'file-static' && r.kind === 'file-static') {
-      if (existing.triggeredBy === r.triggeredBy) return true
+      if (
+        existing.triggeredBy === r.triggeredBy &&
+        sameVia(existing.via, r.via)
+      )
+        return true
     } else if (existing.kind === 'tool-call' && r.kind === 'tool-call') {
       if (existing.tool === r.tool && existing.lineIndex === r.lineIndex) return true
+    } else if (
+      (existing.kind === 'project-static' && r.kind === 'project-static') ||
+      (existing.kind === 'global-static' && r.kind === 'global-static')
+    ) {
+      if (sameVia(existing.via, r.via)) return true
     } else {
       return true
     }
   }
   return false
+}
+
+function sameVia(a: import('./types').LoadVia, b: import('./types').LoadVia): boolean {
+  if (a.kind !== b.kind) return false
+  switch (a.kind) {
+    case 'folder-claude-md':
+      return a.chainDir === (b as typeof a).chainDir
+    case 'rule-always-apply':
+      return a.rulePath === (b as typeof a).rulePath
+    case 'rule-glob': {
+      const bg = b as typeof a
+      return a.rulePath === bg.rulePath && a.matchedGlob === bg.matchedGlob
+    }
+    case 'mcp-index': {
+      const bm = b as typeof a
+      return a.server === bm.server && a.sourceFile === bm.sourceFile
+    }
+    default:
+      return true
+  }
 }
 
 function rebuildClaudeMdChain(snapshot: LoadedContextSnapshot): void {

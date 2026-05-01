@@ -3,13 +3,11 @@ import { useStore } from './store'
 import { useTheme } from './hooks/useTheme'
 import { HeaderBar } from './components/shell/HeaderBar'
 import { ModeSidebar } from './components/shell/ModeSidebar'
-import { DetailDrawer } from './components/shell/DetailDrawer'
 import { Toast } from './components/shell/Toast'
 import { HomePage } from './components/home/HomePage'
 import { InventoryPage } from './components/inventory/InventoryPage'
 import { ProbePage } from './components/probe/ProbePage'
 import { SessionPage } from './components/session/SessionPage'
-import { PlaybookPage } from './components/playbook/PlaybookPage'
 
 export default function App() {
   const mode = useStore((s) => s.mode)
@@ -20,11 +18,8 @@ export default function App() {
   const sources = useStore((s) => s.sources)
   const currentProject = useStore((s) => s.currentProject)
   const setCurrentProject = useStore((s) => s.setCurrentProject)
-  const detailSelection = useStore((s) => s.detailSelections[s.mode] ?? null)
   const setDetailSelection = useStore((s) => s.setDetailSelection)
-  const detailOpen = useStore((s) => s.detailOpen)
   const toggleDetail = useStore((s) => s.toggleDetail)
-  const setDetailOpen = useStore((s) => s.setDetailOpen)
   const setThemeMode = useStore((s) => s.setThemeMode)
 
   const { setMode: setThemeCssMode } = useTheme()
@@ -76,10 +71,6 @@ export default function App() {
         e.preventDefault()
         setMode('session')
       }
-      if (e.key === '4') {
-        e.preventDefault()
-        setMode('playbook')
-      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -105,32 +96,14 @@ export default function App() {
 
   return (
     <div className="h-screen bg-surface text-content-primary flex flex-col overflow-hidden">
-      <HeaderBar
-        currentProject={currentProject}
-        onSwitchProject={handleSwitchProject}
-        onToggleDetail={toggleDetail}
-        showDetailToggle={mode !== 'home' && mode !== 'playbook'}
-      />
+      <HeaderBar currentProject={currentProject} onSwitchProject={handleSwitchProject} />
       <div className="flex-1 flex overflow-hidden">
         <ModeSidebar mode={mode} onChange={setMode} />
 
-        <main className="flex-1 flex overflow-hidden min-w-0">
-          {mode === 'home' && <HomePage />}
-          {mode === 'inventory' && <InventoryPage />}
-          {mode === 'probe' && <ProbePage />}
-          {mode === 'session' && <SessionPage />}
-          {mode === 'playbook' && <PlaybookPage />}
-        </main>
-
-        {mode !== 'home' && mode !== 'playbook' && (
-          <div
-            className={`shrink-0 border-l border-edge bg-surface-sidebar overflow-hidden transition-[width] duration-200 ${
-              detailOpen ? 'w-96' : 'w-0 border-l-0'
-            }`}
-          >
-            <DetailDrawer selection={detailSelection} onClose={() => setDetailOpen(false)} />
-          </div>
-        )}
+        {mode === 'home' && <HomePage />}
+        {mode === 'inventory' && <InventoryPage />}
+        {mode === 'probe' && <ProbePage />}
+        {mode === 'session' && <SessionPage />}
       </div>
       <Toast />
     </div>

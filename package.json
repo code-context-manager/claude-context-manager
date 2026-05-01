@@ -1,0 +1,52 @@
+{
+  "name": "claude-context-manager",
+  "version": "1.0.0",
+  "description": "",
+  "main": "out/main/index.js",
+  "bin": {
+    "claude-context-mcp": "out/mcp/index.mjs"
+  },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "mcp:dev": "tsx src/mcp/index.ts",
+    "mcp:build": "esbuild src/mcp/index.ts --bundle --platform=node --format=esm --packages=external --outfile=out/mcp/index.mjs && chmod +x out/mcp/index.mjs",
+    "postinstall": "pnpm mcp:build"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.18.3",
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.2",
+    "@tanstack/react-virtual": "^3.13.23",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "electron": "^41.2.0",
+    "electron-vite": "^5.0.0",
+    "esbuild": "^0.28.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "tailwindcss": "^4.2.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.8",
+    "vitest": "^4.1.4",
+    "zustand": "^5.0.12"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ]
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "lucide-react": "^1.14.0",
+    "zod": "^4.3.6"
+  }
+}

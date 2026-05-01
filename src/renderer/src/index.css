@@ -1,0 +1,124 @@
+@import 'tailwindcss';
+
+/* ── Theme CSS Variables ── */
+
+:root {
+  /* Surfaces */
+  --color-bg: #141416;
+  --color-bg-sidebar: #0f0f11;
+  --color-bg-raised: #27272a;
+  --color-bg-overlay: #1c1c1e;
+  --color-bg-input: #1c1c1e;
+  --color-bg-hover: rgba(255, 255, 255, 0.05);
+  --color-bg-active: #3f3f46;
+  --color-bg-selected: #3f3f46;
+
+  /* Text */
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #71717a;
+  --color-text-disabled: #52525b;
+
+  /* Borders */
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.15);
+
+  /* Accents — context type colors (same in both themes) */
+  --color-accent-blue: #3b82f6;
+  --color-accent-amber: #f59e0b;
+  --color-accent-emerald: #10b981;
+  --color-accent-purple: #a855f7;
+  --color-accent-rose: #f43f5e;
+
+  /* Interactive */
+  --color-focus-ring: rgba(59, 130, 246, 0.5);
+
+  /* Shadows */
+  --shadow-dropdown: 0 4px 24px rgba(0, 0, 0, 0.5);
+
+  /* Scrollbar */
+  --color-scrollbar: rgba(255, 255, 255, 0.1);
+  --color-scrollbar-hover: rgba(255, 255, 255, 0.2);
+}
+
+.light {
+  /* Surfaces */
+  --color-bg: #f9f9f7;
+  --color-bg-sidebar: #f0efed;
+  --color-bg-raised: #e8e7e5;
+  --color-bg-overlay: #ffffff;
+  --color-bg-input: #ffffff;
+  --color-bg-hover: rgba(0, 0, 0, 0.04);
+  --color-bg-active: #d4d4d8;
+  --color-bg-selected: #dbeafe;
+
+  /* Text */
+  --color-text-primary: #18181b;
+  --color-text-secondary: #52525b;
+  --color-text-muted: #71717a;
+  --color-text-disabled: #a1a1aa;
+
+  /* Borders */
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-border-strong: rgba(0, 0, 0, 0.15);
+
+  /* Interactive */
+  --color-focus-ring: rgba(59, 130, 246, 0.4);
+
+  /* Shadows */
+  --shadow-dropdown: 0 4px 24px rgba(0, 0, 0, 0.12);
+
+  /* Scrollbar */
+  --color-scrollbar: rgba(0, 0, 0, 0.1);
+  --color-scrollbar-hover: rgba(0, 0, 0, 0.2);
+}
+
+/* ── Base styles ── */
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-scrollbar);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-scrollbar-hover);
+}
+
+/* ── Tailwind v4 theme extension ── */
+
+@theme {
+  --color-surface: var(--color-bg);
+  --color-surface-sidebar: var(--color-bg-sidebar);
+  --color-surface-raised: var(--color-bg-raised);
+  --color-surface-overlay: var(--color-bg-overlay);
+  --color-surface-input: var(--color-bg-input);
+  --color-surface-hover: var(--color-bg-hover);
+  --color-surface-active: var(--color-bg-active);
+  --color-surface-selected: var(--color-bg-selected);
+
+  --color-content-primary: var(--color-text-primary);
+  --color-content-secondary: var(--color-text-secondary);
+  --color-content-muted: var(--color-text-muted);
+  --color-content-disabled: var(--color-text-disabled);
+
+  --color-edge: var(--color-border);
+  --color-edge-strong: var(--color-border-strong);
+
+  --shadow-overlay: var(--shadow-dropdown);
+}

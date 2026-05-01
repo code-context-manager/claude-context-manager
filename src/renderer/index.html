@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Claude Context Manager</title>
+  </head>
+  <body>
+    <!-- Prevent flash: apply theme before React mounts -->
+    <script>
+      (function() {
+        var mode = localStorage.getItem('ccm-theme') || 'system';
+        var dark = mode === 'system'
+          ? window.matchMedia('(prefers-color-scheme: dark)').matches
+          : mode === 'dark';
+        if (!dark) document.documentElement.classList.add('light');
+      })();
+    </script>
+    <div id="root"></div>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>

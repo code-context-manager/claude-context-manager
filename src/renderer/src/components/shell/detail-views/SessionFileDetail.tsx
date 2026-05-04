@@ -6,7 +6,7 @@ import { DetailSection } from '../../common/DetailSection'
 import { FilePreview } from '../../common/FilePreview'
 
 function fileBasename(p: string): string {
-  const i = p.lastIndexOf('/')
+  const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
   return i === -1 ? p : p.slice(i + 1)
 }
 

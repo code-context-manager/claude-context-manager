@@ -1,5 +1,10 @@
 import { join } from 'path'
-import { getProjectsDir, decodeProjectDirName } from './path-utils'
+import {
+  getProjectsDir,
+  encodeProjectPath,
+  decodeProjectDirName,
+  getProjectDisplayName,
+} from './path-utils'
 import type { Project } from './types'
 import type { FsReader } from './fs'
 
@@ -11,14 +16,25 @@ interface SessionInfo {
 /**
  * List all known Claude Code projects by combining:
  * 1. ~/.claude/projects/ directory entries (path-encoded folder names)
- * 2. ~/.claude/sessions/*.json for last-used timestamps
+ * 2. ~/.claude/sessions/*.json for last-used timestamps and authoritative
+ *    `cwd` values used to resolve encoded directory names back to real paths
+ * 3. The first JSONL line in each project directory as a fallback `cwd`
+ *    source when no session JSON references that directory.
+ *
+ * Directory-name decoding is lossy on Windows (`\.claude` and `\\claude`
+ * both encode to `--claude`), so we prefer authoritative `cwd` strings from
+ * Claude Code's own metadata and only fall back to the heuristic decode
+ * when neither source provides one.
  */
 export async function listProjects(fs: FsReader): Promise<Project[]> {
   const projectsDir = getProjectsDir()
   const sessionsDir = join(getProjectsDir(), '..', 'sessions')
 
-  // Read session files for last-used timestamps
+  // 1. Read ~/.claude/sessions/*.json — these record `cwd` and `startedAt`
+  //    for every Claude Code session and are the authoritative source for
+  //    real project paths.
   const lastUsedMap = new Map<string, number>()
+  const dirToCwd = new Map<string, string>() // encoded-dir-name → real cwd
   const sessionFiles = await fs.readdir(sessionsDir)
   if (sessionFiles) {
     const jsonFiles = sessionFiles.filter((f) => f.endsWith('.json'))
@@ -34,26 +50,39 @@ export async function listProjects(fs: FsReader): Promise<Project[]> {
       }),
     )
     for (const session of sessions) {
-      if (!session) continue
+      if (!session?.cwd) continue
       const existing = lastUsedMap.get(session.cwd)
       if (!existing || session.startedAt > existing) {
         lastUsedMap.set(session.cwd, session.startedAt)
       }
+      dirToCwd.set(encodeProjectPath(session.cwd), session.cwd)
     }
   }
 
-  // Read project directory entries
+  // 2. Walk ~/.claude/projects/ entries. Skip non-encoded names (dotfiles,
+  //    stray junk). For each known encoded folder we resolve the real path
+  //    via, in order: cached cwd from session JSON → first jsonl peek →
+  //    lossy decode.
   const projectPaths = new Set<string>()
   const entries = await fs.readdir(projectsDir)
   if (entries) {
-    for (const entry of entries) {
-      // Skip non-directory entries and hidden files
-      if (!entry.startsWith('-')) continue
-      projectPaths.add(decodeProjectDirName(entry))
+    const resolved = await Promise.all(
+      entries.map(async (entry) => {
+        if (entry.startsWith('.')) return null
+        if (!/^(-|[A-Za-z]-)/.test(entry)) return null
+        const cached = dirToCwd.get(entry)
+        if (cached) return cached
+        const peeked = await peekProjectCwd(fs, join(projectsDir, entry))
+        return peeked ?? decodeProjectDirName(entry)
+      }),
+    )
+    for (const p of resolved) {
+      if (p) projectPaths.add(p)
     }
   }
 
-  // Also add any paths from sessions that aren't in projects dir yet
+  // 3. Add any cwds from session metadata that don't have a projects/ dir
+  //    yet (e.g. session was just started, dir not yet created).
   for (const cwd of lastUsedMap.keys()) {
     projectPaths.add(cwd)
   }
@@ -63,7 +92,7 @@ export async function listProjects(fs: FsReader): Promise<Project[]> {
     [...projectPaths].map(async (projectPath) => {
       const s = await fs.stat(projectPath)
       const exists = s?.isDirectory ?? false
-      const name = projectPath.split('/').pop() || projectPath
+      const name = getProjectDisplayName(projectPath)
       return {
         path: projectPath,
         name,
@@ -82,4 +111,29 @@ export async function listProjects(fs: FsReader): Promise<Project[]> {
   })
 
   return projects
+}
+
+/**
+ * Read the `cwd` field from the first JSONL line in a project directory
+ * that has one. Claude Code records `cwd` on most session-message lines,
+ * so any line will do; we just take the first match. Returns null if no
+ * jsonl files exist or none contain a `cwd`.
+ */
+async function peekProjectCwd(fs: FsReader, dir: string): Promise<string | null> {
+  const entries = await fs.readdir(dir)
+  if (!entries) return null
+  const jsonl = entries.find((e) => e.endsWith('.jsonl'))
+  if (!jsonl) return null
+  const raw = await fs.readFile(join(dir, jsonl))
+  if (!raw) return null
+  for (const line of raw.split('\n')) {
+    if (!line.includes('"cwd"')) continue
+    try {
+      const obj = JSON.parse(line) as { cwd?: unknown }
+      if (typeof obj.cwd === 'string' && obj.cwd.length > 0) return obj.cwd
+    } catch {
+      // malformed line — keep scanning
+    }
+  }
+  return null
 }

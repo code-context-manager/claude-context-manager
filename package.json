@@ -26,7 +26,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "mcp:dev": "tsx src/mcp/index.ts",
-    "mcp:build": "esbuild src/mcp/index.ts --bundle --platform=node --format=esm --packages=external --outfile=out/mcp/index.mjs && chmod +x out/mcp/index.mjs",
+    "mcp:build": "esbuild src/mcp/index.ts --bundle --platform=node --format=esm --packages=external --outfile=out/mcp/index.mjs && node -e \"require('fs').chmodSync('out/mcp/index.mjs', 0o755)\"",
     "postinstall": "pnpm mcp:build",
     "dist:mac": "electron-builder --mac --arm64 --x64 --publish always",
     "dist:win": "electron-builder --win --publish always",

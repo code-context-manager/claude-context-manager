@@ -175,6 +175,11 @@ jobs:
 
             app "Claude Context Manager.app"
 
+            uninstall_preflight do
+              app_bin = "/Applications/Claude Context Manager.app/Contents/MacOS/Claude Context Manager"
+              system app_bin, "--cleanup-mcp-registration" if File.exist?(app_bin)
+            end
+
             zap trash: [
               "~/Library/Application Support/Claude Context Manager",
               "~/Library/Preferences/com.claudecontextmanager.app.plist",
@@ -208,6 +213,9 @@ jobs:
             "bin": "Claude Context Manager.exe",
             "shortcuts": [
               ["Claude Context Manager.exe", "Claude Context Manager"]
+            ],
+            "pre_uninstall": [
+              "if (Test-Path \"\$dir\\\\Claude Context Manager.exe\") { & \"\$dir\\\\Claude Context Manager.exe\" --cleanup-mcp-registration | Out-Null }"
             ],
             "checkver": "github",
             "autoupdate": {

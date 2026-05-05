@@ -3,6 +3,9 @@ import { join } from 'path'
 import { registerIpcHandlers, setProjectPath } from './ipc-handlers'
 import { startWatching, stopWatching, startSessionListWatch } from './file-watcher'
 import { initAutoUpdater } from './auto-updater'
+import { ensureSelfRegistration, removeSelfRegistration } from './mcp-self-register'
+
+const CLEANUP_FLAG = '--cleanup-mcp-registration'
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -115,18 +118,43 @@ function buildMenu(win: BrowserWindow): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
-app.whenReady().then(() => {
-  // Default to CWD as the project path
-  const projectPath = process.cwd()
-  setProjectPath(projectPath)
-  registerIpcHandlers()
+// Headless mode for uninstall hooks: short-circuit before any UI work.
+// Wired up by NSIS uninstaller, Homebrew cask uninstall_postflight, .deb
+// prerm, and Scoop's uninstall script. Removes our user-scope MCP entry
+// from ~/.claude.json so we don't leave orphaned wiring behind.
+if (process.argv.includes(CLEANUP_FLAG)) {
+  app.whenReady().then(async () => {
+    try {
+      await removeSelfRegistration()
+    } catch (err) {
+      console.error('mcp-cleanup failed:', err)
+    } finally {
+      app.quit()
+    }
+  })
+} else {
+  app.whenReady().then(async () => {
+    // Convention-over-configuration: register our bundled MCP server at user
+    // scope so Claude Code picks it up in every project. Plumbing, not
+    // context — see docs/state/facts.md.
+    try {
+      await ensureSelfRegistration()
+    } catch (err) {
+      console.error('mcp self-registration failed:', err)
+    }
 
-  const win = createWindow()
-  buildMenu(win)
-  startWatching(projectPath, win)
-  startSessionListWatch(projectPath, win)
-  initAutoUpdater()
-})
+    // Default to CWD as the project path
+    const projectPath = process.cwd()
+    setProjectPath(projectPath)
+    registerIpcHandlers()
+
+    const win = createWindow()
+    buildMenu(win)
+    startWatching(projectPath, win)
+    startSessionListWatch(projectPath, win)
+    initAutoUpdater()
+  })
+}
 
 app.on('window-all-closed', () => {
   stopWatching()

@@ -18,9 +18,6 @@ export function NonFsSectionDetail({ section, snapshot }: Props) {
           {section === 'system-prompt' && <Simple text={snapshot.systemPrompt ? `${snapshot.systemPrompt.tokens} tokens` : 'Not captured in this JSONL.'} />}
           {section === 'env-info' && <Simple text={snapshot.envInfo ? `${snapshot.envInfo.tokens} tokens` : 'Not captured in this JSONL.'} />}
           {section === 'system-tools' && <ToolList names={snapshot.systemTools} />}
-          {section === 'memory' && (
-            <Simple text={snapshot.memory ? `${snapshot.memory.path ?? 'MEMORY.md'} — ${snapshot.memory.tokens} tokens` : 'Not loaded.'} />
-          )}
           {section === 'claude-md-chain' && <ClaudeMd snapshot={snapshot} />}
           {section === 'skills' && <Skills snapshot={snapshot} />}
           {section === 'mcp-schemas' && <McpSchemas snapshot={snapshot} />}
@@ -37,7 +34,6 @@ function labelFor(k: NonFsSectionKind): string {
       'system-prompt': 'System prompt',
       'env-info': 'Environment info',
       'system-tools': 'System tools',
-      memory: 'Memory',
       'claude-md-chain': 'CLAUDE.md chain',
       skills: 'Skills invoked',
       'mcp-schemas': 'MCP tool schemas',

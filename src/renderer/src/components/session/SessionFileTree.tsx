@@ -60,7 +60,12 @@ function TreeNode({ node, depth, selectedPath, onSelect, defaultOpen }: NodeProp
   const [open, setOpen] = useState(defaultOpen ?? (depth < 2 || hasLoadedDescendant))
 
   if (node.isDirectory) {
-    const children = node.children ?? []
+    // Collapse chains of single-child directories into one row, e.g.
+    // `projects/<encoded>/memory/` becomes a single label. Stops at the
+    // first directory that has multiple visible children or contains a
+    // file. Pure presentation — the underlying tree is unchanged.
+    const { displayName, leaf } = collapseSingleChildChain(node)
+    const children = leaf.children ?? []
     // Hide directories that contain nothing loaded to reduce noise at depth >0.
     if (depth > 0 && !hasLoadedDescendant) return null
     return (
@@ -70,10 +75,10 @@ function TreeNode({ node, depth, selectedPath, onSelect, defaultOpen }: NodeProp
           chevron={open ? 'open' : 'closed'}
           onClick={() => setOpen((o) => !o)}
         >
-          <span className="text-content-secondary">{node.name}/</span>
+          <span className="text-content-secondary">{displayName}/</span>
           {hasLoadedDescendant && (
             <span className="ml-auto text-[10px] text-content-muted tabular-nums">
-              {node.loadedCountRollup} · {formatTokens(node.loadedTokensRollup)}
+              {leaf.loadedCountRollup} · {formatTokens(leaf.loadedTokensRollup)}
             </span>
           )}
         </TreeRow>
@@ -120,6 +125,30 @@ function TreeNode({ node, depth, selectedPath, onSelect, defaultOpen }: NodeProp
       </span>
     </TreeRow>
   )
+}
+
+/**
+ * Walk down through directory nodes whose only visible child is another
+ * directory, joining names with `/`. Returns the deepest directory in the
+ * chain so its children become this row's children. A directory with a file
+ * child or multiple children stops the collapse. Files in a child node still
+ * render at +1 depth, which is the correct behaviour.
+ */
+function collapseSingleChildChain(start: SessionTreeNode): {
+  displayName: string
+  leaf: SessionTreeNode
+} {
+  let current = start
+  let displayName = current.name
+  while (true) {
+    const children = current.children ?? []
+    if (children.length !== 1) break
+    const only = children[0]
+    if (!only.isDirectory) break
+    current = only
+    displayName += '/' + current.name
+  }
+  return { displayName, leaf: current }
 }
 
 /**

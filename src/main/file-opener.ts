@@ -10,99 +10,151 @@ export interface OpenOption {
   primary?: boolean
 }
 
+interface EditorSpec {
+  id: string
+  label: string
+  mac?: { appName: string }
+  cli?: { command: string }
+}
+
+const EDITORS: EditorSpec[] = [
+  { id: 'editor:vscode', label: 'VS Code', mac: { appName: 'Visual Studio Code' }, cli: { command: 'code' } },
+  { id: 'editor:cursor', label: 'Cursor', mac: { appName: 'Cursor' }, cli: { command: 'cursor' } },
+  { id: 'editor:sublime', label: 'Sublime Text', mac: { appName: 'Sublime Text' }, cli: { command: 'subl' } },
+  { id: 'editor:webstorm', label: 'WebStorm', mac: { appName: 'WebStorm' }, cli: { command: 'webstorm' } },
+  { id: 'editor:idea', label: 'IntelliJ IDEA', mac: { appName: 'IntelliJ IDEA' }, cli: { command: 'idea' } },
+  { id: 'editor:zed', label: 'Zed', mac: { appName: 'Zed' }, cli: { command: 'zed' } },
+]
+
 interface ResolvedEditor {
   id: string
   label: string
-  run: (filePath: string) => void
+  run: (filePath: string) => Promise<void>
 }
 
-interface MacAppSpec {
-  id: string
-  label: string
-  appName: string
+// Wrap a child process so we can await whether it actually launched.
+// `error` fires (instead of `spawn`) when the binary can't be executed —
+// e.g. ENOENT, EACCES, or Node's CVE-2024-27980 block on .cmd/.bat. Without
+// this, fire-and-forget spawns swallow those errors.
+function awaitSpawn(child: ReturnType<typeof spawn>): Promise<void> {
+  return new Promise((resolve, reject) => {
+    child.once('error', reject)
+    child.once('spawn', () => {
+      child.unref()
+      resolve()
+    })
+  })
 }
 
-const MAC_APPS: MacAppSpec[] = [
-  { id: 'editor:vscode', label: 'VS Code', appName: 'Visual Studio Code' },
-  { id: 'editor:cursor', label: 'Cursor', appName: 'Cursor' },
-  { id: 'editor:sublime', label: 'Sublime Text', appName: 'Sublime Text' },
-  { id: 'editor:webstorm', label: 'WebStorm', appName: 'WebStorm' },
-  { id: 'editor:idea', label: 'IntelliJ IDEA', appName: 'IntelliJ IDEA' },
-  { id: 'editor:zed', label: 'Zed', appName: 'Zed' },
-]
-
-interface PathToolSpec {
-  id: string
-  label: string
-  command: string
+interface PlatformAdapter {
+  revealLabel: string
+  resolve(spec: EditorSpec): ResolvedEditor | null
 }
 
-const PATH_TOOLS: PathToolSpec[] = [
-  { id: 'editor:vscode', label: 'VS Code', command: 'code' },
-  { id: 'editor:cursor', label: 'Cursor', command: 'cursor' },
-  { id: 'editor:sublime', label: 'Sublime Text', command: 'subl' },
-  { id: 'editor:webstorm', label: 'WebStorm', command: 'webstorm' },
-  { id: 'editor:idea', label: 'IntelliJ IDEA', command: 'idea' },
-  { id: 'editor:zed', label: 'Zed', command: 'zed' },
-]
+const macAdapter: PlatformAdapter = {
+  revealLabel: 'Reveal in Finder',
+  resolve(spec) {
+    if (!spec.mac) return null
+    const { appName } = spec.mac
+    const found =
+      existsSync(`/Applications/${appName}.app`) ||
+      existsSync(join(homedir(), 'Applications', `${appName}.app`))
+    if (!found) return null
+    return {
+      id: spec.id,
+      label: `Open in ${spec.label}`,
+      run: (filePath) =>
+        awaitSpawn(
+          spawn('open', ['-a', appName, filePath], { detached: true, stdio: 'ignore' }),
+        ),
+    }
+  },
+}
+
+// Resolve a CLI command to an absolute path that `spawn` (without a shell) can
+// execute directly.
+//
+// Why this is fiddly on Windows:
+//   1. `spawn('code', …)` without `shell:true` only matches an exact filename —
+//      it does not honor PATHEXT, so `.cmd`/`.bat` shims fail with ENOENT.
+//   2. `where code` returns ALL matches, and tools like VS Code ship both an
+//      extensionless bash script (`…\bin\code`, for git-bash/WSL) and a
+//      Windows batch shim (`…\bin\code.cmd`). The bash script appears first
+//      but is not executable by Windows directly — we must pick the entry
+//      whose extension is in PATHEXT.
+function whichResolve(command: string): string | null {
+  const tool = process.platform === 'win32' ? 'where' : 'which'
+  try {
+    const out = execFileSync(tool, [command], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString()
+    const lines = out
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    if (lines.length === 0) return null
+    if (process.platform !== 'win32') return lines[0]
+    const pathext = (process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD')
+      .split(';')
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean)
+    const executable = lines.find((line) => {
+      const dot = line.lastIndexOf('.')
+      if (dot < 0) return false
+      return pathext.includes(line.slice(dot).toLowerCase())
+    })
+    return executable ?? null
+  } catch {
+    return null
+  }
+}
+
+// Launch a resolved CLI absolute path with one file argument.
+// On Windows, `.cmd`/`.bat` shims cannot be spawned directly since Node 20
+// (CVE-2024-27980) — they must go through cmd.exe. We invoke cmd.exe ourselves
+// with `windowsVerbatimArguments` rather than `shell:true` so the quoting is
+// explicit and survives paths with spaces or `&`-like characters.
+function runResolved(resolved: string, filePath: string): Promise<void> {
+  const isWinBatch = process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolved)
+  const child = isWinBatch
+    ? spawn(
+        'cmd.exe',
+        ['/d', '/s', '/c', `"${resolved.replace(/"/g, '""')}" "${filePath.replace(/"/g, '""')}"`],
+        { detached: true, stdio: 'ignore', windowsVerbatimArguments: true },
+      )
+    : spawn(resolved, [filePath], { detached: true, stdio: 'ignore' })
+  return awaitSpawn(child)
+}
+
+const cliAdapter: PlatformAdapter = {
+  revealLabel: process.platform === 'win32' ? 'Show in Explorer' : 'Show in file manager',
+  resolve(spec) {
+    if (!spec.cli) return null
+    const resolved = whichResolve(spec.cli.command)
+    if (!resolved) return null
+    return {
+      id: spec.id,
+      label: `Open in ${spec.label}`,
+      run: (filePath) => runResolved(resolved, filePath),
+    }
+  },
+}
+
+function getAdapter(): PlatformAdapter {
+  return process.platform === 'darwin' ? macAdapter : cliAdapter
+}
 
 let editors: ResolvedEditor[] = []
 let initialized = false
 
-function macAppExists(appName: string): boolean {
-  return (
-    existsSync(`/Applications/${appName}.app`) ||
-    existsSync(join(homedir(), 'Applications', `${appName}.app`))
-  )
-}
-
-function whichExists(command: string): boolean {
-  try {
-    const tool = process.platform === 'win32' ? 'where' : 'which'
-    execFileSync(tool, [command], { stdio: 'ignore' })
-    return true
-  } catch {
-    return false
-  }
-}
-
 function init(): void {
   if (initialized) return
   initialized = true
-  if (process.platform === 'darwin') {
-    for (const app of MAC_APPS) {
-      if (macAppExists(app.appName)) {
-        editors.push({
-          id: app.id,
-          label: `Open in ${app.label}`,
-          run: (filePath) => {
-            spawn('open', ['-a', app.appName, filePath], {
-              detached: true,
-              stdio: 'ignore',
-            }).unref()
-          },
-        })
-      }
-    }
-  } else {
-    for (const tool of PATH_TOOLS) {
-      if (whichExists(tool.command)) {
-        editors.push({
-          id: tool.id,
-          label: `Open in ${tool.label}`,
-          run: (filePath) => {
-            spawn(tool.command, [filePath], { detached: true, stdio: 'ignore' }).unref()
-          },
-        })
-      }
-    }
+  const adapter = getAdapter()
+  for (const spec of EDITORS) {
+    const resolved = adapter.resolve(spec)
+    if (resolved) editors.push(resolved)
   }
-}
-
-function revealLabel(): string {
-  if (process.platform === 'darwin') return 'Reveal in Finder'
-  if (process.platform === 'win32') return 'Show in Explorer'
-  return 'Show in file manager'
 }
 
 export function listOpenOptions(): OpenOption[] {
@@ -110,7 +162,7 @@ export function listOpenOptions(): OpenOption[] {
   const [topEditor, ...restEditors] = editors
   const list: OpenOption[] = []
   if (topEditor) list.push({ id: topEditor.id, label: topEditor.label })
-  list.push({ id: 'reveal', label: revealLabel() })
+  list.push({ id: 'reveal', label: getAdapter().revealLabel })
   list.push(...restEditors.map((e) => ({ id: e.id, label: e.label })))
   list.push(
     { id: 'default', label: 'Open with default app' },
@@ -140,7 +192,7 @@ export async function openWith(filePath: string, optionId: string): Promise<void
   }
   const editor = editors.find((e) => e.id === optionId)
   if (editor) {
-    editor.run(filePath)
+    await editor.run(filePath)
     return
   }
   throw new Error(`Unknown open option: ${optionId}`)

@@ -25,9 +25,51 @@ Builds are not code-signed yet (Apple Developer Program enrollment is deferred u
 
 The app checks for updates on startup and downloads them in the background. Restart to apply. This works regardless of how you installed (Homebrew / Scoop / direct).
 
-## Using this in Claude Code (development)
+## Local development
 
-Clone and `pnpm install` — the postinstall step builds the bundled MCP server, and [`.mcp.json`](.mcp.json) registers it for the project. On your first Claude Code session in this repo you'll be prompted to approve the project-scoped server; once approved, tools like `get_project_static_load`, `probe_file`, and `get_active_session` are available.
+Requires [Node.js](https://nodejs.org/) 18+ and [pnpm](https://pnpm.io/) 10+. If you don't have pnpm:
+
+```sh
+npm install -g pnpm
+```
+
+Install dependencies (the `postinstall` step also builds the bundled MCP server):
+
+```sh
+pnpm install
+```
+
+Run the desktop app in dev mode (hot reload):
+
+```sh
+pnpm dev
+```
+
+Other commands:
+
+```sh
+pnpm build         # production build of the Electron app
+pnpm preview       # preview the production build
+pnpm test          # run tests
+pnpm mcp:build     # rebuild the bundled MCP server
+pnpm dist:win      # package a Windows installer
+pnpm dist:mac      # package macOS artifacts
+pnpm dist:linux    # package Linux artifacts
+```
+
+### Using this in Claude Code
+
+The app self-registers its bundled MCP server at user scope on launch. The first time you open the desktop app (whether installed or `pnpm dev`), it writes a `mcpServers["claude-context-manager"]` entry to `~/.claude.json` pointing at its bundled MCP binary. Restart Claude Code afterward and tools like `get_project_static_load`, `probe_file`, and `get_active_session` are available in every project.
+
+The registration is idempotent — only rewritten when the path drifts (e.g. you moved the dev checkout or reinstalled the app).
+
+#### Removing the registration
+
+Homebrew, Scoop, NSIS (.exe), and `.deb` uninstalls clean up the registration automatically. If you installed via direct `.dmg` drag-to-trash or `.AppImage`, remove it manually:
+
+```sh
+claude mcp remove claude-context-manager -s user
+```
 
 ## Releasing
 

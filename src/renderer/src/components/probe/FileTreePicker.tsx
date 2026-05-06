@@ -134,15 +134,20 @@ function buildTree(entries: ProjectFileEntry[], projectPath: string | null): Tre
     byPath.set(entry.path, { entry, children: [] })
   }
   for (const entry of entries) {
-    const parentPath = entry.path.slice(0, entry.path.lastIndexOf('/'))
     const node = byPath.get(entry.path)
     if (!node) continue
-    const parent = byPath.get(parentPath)
-    if (parent && parentPath !== projectPath) {
+    const parent = byPath.get(parentDir(entry.path))
+    if (parent && parent.entry.path !== projectPath) {
       parent.children.push(node)
     } else {
       roots.push(node)
     }
   }
   return roots
+}
+
+/** Strip the last path segment, recognising both `/` and `\` separators. */
+function parentDir(p: string): string {
+  const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
+  return i === -1 ? '' : p.slice(0, i)
 }

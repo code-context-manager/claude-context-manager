@@ -38,6 +38,16 @@ trigger: User asks about building installers, releasing a new version, distribut
 | Direct `.exe` (Windows) | SmartScreen shows a blue popup. User clicks "More info" → "Run anyway". |
 | `.AppImage` / `.deb` (Linux) | `chmod +x` then run, or install the `.deb` with `apt`. No warnings. |
 
+## MCP self-registration & uninstall hooks
+
+- The app writes a user-scope MCP entry to `~/.claude.json` on launch (`src/main/mcp-self-register.ts`). All four install channels strip it on uninstall by invoking `<app> --cleanup-mcp-registration`:
+  - **NSIS (.exe)**: `customUnInstall` macro in `build/installer.nsh`, wired via `nsis.include`.
+  - **`.deb`**: prerm script `build/linux-before-remove.sh`, wired via `deb.fpm --before-remove`.
+  - **Homebrew cask**: `uninstall_preflight` block in the cask heredoc inside `release.yml`.
+  - **Scoop**: `pre_uninstall` array in the manifest heredoc inside `release.yml`.
+- AppImage and direct `.dmg` drag-to-trash have no hook surface — they leave a stale entry in `~/.claude.json`. Documented in the README; not worth engineering around.
+- If you change the cleanup flag name or move the cleanup logic, update all four hook sites in lockstep.
+
 ## Things to be careful about
 
 - **`postinstall` builds the bundled MCP server** (`pnpm mcp:build`). It runs naturally during `pnpm install` in CI; the workflow then asserts `out/mcp/index.mjs` exists before packaging. Don't remove the assertion — a missing MCP entry would silently ship a broken app.

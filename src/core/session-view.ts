@@ -98,6 +98,7 @@ export async function buildSessionView(
 
   // Snapshot's claudeMdChain mirrors the file-shaped CLAUDE.mds with reasons.
   rebuildClaudeMdChain(snapshot)
+  rebuildMemory(snapshot)
 
   await annotateStale(fs, snapshot)
   const tree = await buildTree(fs, projectPath, snapshot)
@@ -226,6 +227,19 @@ function sameVia(a: import('./types').LoadVia, b: import('./types').LoadVia): bo
     default:
       return true
   }
+}
+
+/**
+ * MEMORY.md is auto-loaded — it never appears in the JSONL transcript, so
+ * `computeLoadedContext` can't see it. The project-static layer adds it to
+ * `snapshot.files`; mirror that into `snapshot.memory` for the "Other
+ * context" panel that reads the field directly.
+ */
+function rebuildMemory(snapshot: LoadedContextSnapshot): void {
+  if (snapshot.memory) return
+  const file = snapshot.files.find((f) => /MEMORY\.md$/.test(f.path))
+  if (!file) return
+  snapshot.memory = { path: file.path, tokens: file.tokens }
 }
 
 function rebuildClaudeMdChain(snapshot: LoadedContextSnapshot): void {

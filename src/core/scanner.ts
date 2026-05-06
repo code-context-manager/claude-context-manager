@@ -4,12 +4,12 @@ import { estimateTokens } from './token-estimator'
 import { parseRuleFrontmatter, parseSkillFrontmatter } from './claude-parser'
 import {
   getGlobalClaudeMdPath,
-  getGlobalSkillsDir,
   getProjectMemoryPath,
 } from './path-utils'
 import type { FsReader } from './fs'
 import type { ClaudeCli } from './claude-cli'
 import { discoverMcpServers } from './mcp-discovery'
+import { listAllSkillsForProject } from './skills'
 
 /**
  * Scan all context sources for a given project directory.
@@ -80,8 +80,19 @@ export async function scanProject(
   }
 
   // Skills (project + global)
-  await scanSkillsDir(fs, join(projectPath, '.claude', 'skills'), 'project', sources)
-  await scanSkillsDir(fs, getGlobalSkillsDir(), 'global', sources)
+  for (const skill of await listAllSkillsForProject(fs, projectPath)) {
+    const content = await fs.readFile(skill.filePath)
+    if (!content) continue
+    const { meta } = parseSkillFrontmatter(content)
+    sources.push({
+      type: ContextType.Skill,
+      scope: skill.scope,
+      name: meta.name ?? skill.displayName.replace(/\.md$/, ''),
+      filePath: skill.filePath,
+      tokenEstimate: estimateTokens(content),
+      description: meta.description,
+    })
+  }
 
   // Memory
   const memoryPath = getProjectMemoryPath(projectPath)
@@ -117,44 +128,6 @@ export async function scanProject(
   }
 
   return sources
-}
-
-async function scanSkillsDir(
-  fs: FsReader,
-  dir: string,
-  scope: 'project' | 'global',
-  sources: ContextSource[],
-): Promise<void> {
-  const entries = await fs.readdirWithTypes(dir)
-  if (!entries) return
-
-  for (const entry of entries) {
-    // Two layouts: flat `<dir>/<name>.md`, or `<dir>/<name>/SKILL.md`.
-    let filePath: string | null = null
-    let displayName = entry.name
-    if (!entry.isDirectory && entry.name.endsWith('.md')) {
-      filePath = join(dir, entry.name)
-    } else if (entry.isDirectory) {
-      const candidate = join(dir, entry.name, 'SKILL.md')
-      if (await fs.readFile(candidate)) {
-        filePath = candidate
-      }
-    }
-    if (!filePath) continue
-
-    const content = await fs.readFile(filePath)
-    if (!content) continue
-
-    const { meta } = parseSkillFrontmatter(content)
-    sources.push({
-      type: ContextType.Skill,
-      scope,
-      name: meta.name ?? displayName,
-      filePath,
-      tokenEstimate: estimateTokens(content),
-      description: meta.description,
-    })
-  }
 }
 
 async function scanFolderClaudeMd(

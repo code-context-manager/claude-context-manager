@@ -43,12 +43,6 @@ export function NonFsTreeGroup({ snapshot, selected, onSelect }: Props) {
       detail: `${snapshot.systemTools.length} tool${snapshot.systemTools.length === 1 ? '' : 's'} invoked`,
     },
     {
-      kind: 'memory',
-      label: 'Memory',
-      detail: snapshot.memory ? (snapshot.memory.path ?? 'MEMORY.md') : 'Not loaded',
-      tokens: snapshot.memory?.tokens,
-    },
-    {
       kind: 'claude-md-chain',
       label: 'CLAUDE.md chain',
       detail: `${snapshot.claudeMdChain.length} file${snapshot.claudeMdChain.length === 1 ? '' : 's'}`,

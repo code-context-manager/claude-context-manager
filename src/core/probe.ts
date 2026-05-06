@@ -1,4 +1,4 @@
-import { basename, join, relative, resolve } from 'path'
+import { join, relative, resolve } from 'path'
 import type { ProbeNode, ProbeNodeKind, ProbeResult, StaticLoadEntry } from './types'
 import { estimateTokens } from './token-estimator'
 import { parseSettingsJson, parseSkillFrontmatter } from './claude-parser'
@@ -11,6 +11,7 @@ import { HOOK_BRANCH_CAP } from './constants'
 import type { FsReader } from './fs'
 import type { ClaudeCli } from './claude-cli'
 import { computeFileStaticLoad, computeProjectStaticLoad } from './static-load'
+import { listAllSkillsForProject } from './skills'
 
 /**
  * Assemble the Probe tree for a given target file inside a project.
@@ -205,27 +206,30 @@ async function attachHooks(
   }
 }
 
-/** Skills are always conditional — they fire on invocation, not on file load. */
+/**
+ * Skills are always conditional — they fire on invocation, not on file load.
+ * Sources both project-scope (`<project>/.claude/skills/`) and user-scope
+ * (`~/.claude/skills/`) skills, and handles both flat (`name.md`) and
+ * packed (`name/SKILL.md`) layouts.
+ */
 async function attachSkills(
   fs: FsReader,
   absProject: string,
   tree: ProbeNode[],
 ): Promise<void> {
-  const skillsDir = join(absProject, '.claude', 'skills')
-  const skillEntries = await fs.readdir(skillsDir)
-  if (!skillEntries) return
-  for (const file of skillEntries.filter((f) => f.endsWith('.md'))) {
-    const filePath = join(skillsDir, file)
-    const content = await fs.readFile(filePath)
+  const skills = await listAllSkillsForProject(fs, absProject)
+  for (const skill of skills) {
+    const content = await fs.readFile(skill.filePath)
     if (!content) continue
     const { meta } = parseSkillFrontmatter(content)
+    const labelBase = meta.name ?? skill.displayName.replace(/\.md$/, '')
     tree.push({
-      id: `skill:${filePath}`,
+      id: `skill:${skill.filePath}`,
       kind: 'skill',
       state: 'conditional',
-      label: meta.name ?? basename(file, '.md'),
+      label: skill.scope === 'global' ? `${labelBase} (global)` : labelBase,
       tokens: estimateTokens(content),
-      filePath,
+      filePath: skill.filePath,
       trigger: meta.trigger ?? meta.description ?? 'Loaded on skill invocation',
     })
   }

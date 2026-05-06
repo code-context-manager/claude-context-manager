@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "claude-context-manager": {
-      "type": "stdio",
-      "command": "node",
-      "args": ["./out/mcp/index.mjs"]
-    }
-  }
-}

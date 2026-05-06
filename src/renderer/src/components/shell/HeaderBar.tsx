@@ -34,7 +34,7 @@ export function HeaderBar({ currentProject, onSwitchProject }: HeaderBarProps) {
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  const currentName = currentProject?.split('/').pop() ?? 'No project'
+  const currentName = currentProject ? basename(currentProject) : 'No project'
 
   return (
     <div
@@ -134,6 +134,12 @@ function ThemeToggle() {
       <Icon className="w-4 h-4" strokeWidth={1.75} />
     </button>
   )
+}
+
+/** Cross-platform basename — strips the path up to the last `/` or `\`. */
+function basename(p: string): string {
+  const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
+  return i === -1 ? p : p.slice(i + 1)
 }
 
 function formatRelativeTime(timestamp: number): string {

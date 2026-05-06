@@ -15,7 +15,6 @@ export type NonFsSectionKind =
   | 'system-prompt'
   | 'env-info'
   | 'system-tools'
-  | 'memory'
   | 'claude-md-chain'
   | 'skills'
   | 'mcp-schemas'

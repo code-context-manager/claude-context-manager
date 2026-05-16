@@ -10,12 +10,7 @@ import type {
   StaticLoadEntry,
   StaticLoadResult,
 } from './types'
-import {
-  encodeProjectPath,
-  getProjectDataDir,
-  getProjectFamilyBasePath,
-  getProjectsDir,
-} from './path-utils'
+import { familyDataDirs } from './project-family'
 import { ACTIVE_SESSION_STALE_MS } from './constants'
 import { computeLoadedContext } from './loaded-context'
 import { computeFileStaticLoad, computeProjectStaticLoad } from './static-load'
@@ -46,37 +41,6 @@ export interface SessionRef {
   jsonlPath: string
   /** Transcript file mtime (epoch ms); 0 when the fs adapter doesn't report one. */
   lastActivityMs: number
-}
-
-/**
- * Every data dir belonging to this project's "family": the main checkout plus
- * any git-worktree checkouts (Claude Code stores worktree sessions under a
- * separate encoded dir keyed by the worktree cwd). Without scanning the
- * family, "the active session" resolved from the main path silently returns a
- * stale session while the live one sits in a worktree dir.
- */
-async function familyDataDirs(
-  fs: FsReader,
-  projectPath: string,
-): Promise<string[]> {
-  const encodedBase = encodeProjectPath(getProjectFamilyBasePath(projectPath))
-  const root = getProjectsDir()
-  // Always include the literal dir for the passed path so resolution still
-  // works when the projects root isn't listable.
-  const dirs = new Set<string>([
-    getProjectDataDir(projectPath),
-    join(root, encodedBase),
-  ])
-  const names = await fs.readdir(root)
-  if (names) {
-    const worktreePrefix = `${encodedBase}--claude-worktrees-`
-    for (const n of names) {
-      if (n === encodedBase || n.startsWith(worktreePrefix)) {
-        dirs.add(join(root, n))
-      }
-    }
-  }
-  return [...dirs]
 }
 
 /**

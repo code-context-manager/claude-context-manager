@@ -1,43 +1,58 @@
 import { basename, join } from 'path'
 import type { SessionSummary } from './types'
-import { getProjectDataDir } from './path-utils'
+import { familyDataDirs } from './project-family'
 import type { FsReader } from './fs'
 
 /**
- * List all past session transcripts for a project.
- * Session JSONL files live at `~/.claude/projects/<encoded-path>/*.jsonl`.
+ * List all past session transcripts for a project, across the whole project
+ * family (main checkout + git-worktree checkouts). Session JSONL files live at
+ * `~/.claude/projects/<encoded-path>/*.jsonl`; worktrees get their own encoded
+ * dir, so a repo-scoped list must scan every family dir or it silently drops
+ * the sessions that ran inside worktrees.
  */
 export async function listSessionsForProject(
   fs: FsReader,
   projectPath: string,
 ): Promise<SessionSummary[]> {
-  const dir = getProjectDataDir(projectPath)
-  const entries = await fs.readdir(dir)
-  if (!entries) return []
-
-  const jsonlFiles = entries.filter((e) => e.endsWith('.jsonl'))
-  const summaries = await Promise.all(
-    jsonlFiles.map(async (file): Promise<SessionSummary | null> => {
-      const filePath = join(dir, file)
-      const st = await fs.stat(filePath)
-      if (!st || !st.isFile) return null
-      const raw = await fs.readFile(filePath)
-      if (raw === null) return null
-      const { startedAt, endedAt, messageCount, firstPrompt } = summarize(raw)
-      return {
-        id: basename(file, '.jsonl'),
-        filePath,
-        startedAt: startedAt ?? st.birthtimeMs ?? null,
-        endedAt: endedAt ?? st.mtimeMs ?? null,
-        messageCount,
-        firstPrompt,
-      }
+  const dirs = await familyDataDirs(fs, projectPath)
+  const perDir = await Promise.all(
+    dirs.map(async (dir) => {
+      const entries = await fs.readdir(dir)
+      if (!entries) return []
+      const jsonlFiles = entries.filter((e) => e.endsWith('.jsonl'))
+      return Promise.all(
+        jsonlFiles.map(async (file): Promise<SessionSummary | null> => {
+          const filePath = join(dir, file)
+          const st = await fs.stat(filePath)
+          if (!st || !st.isFile) return null
+          const raw = await fs.readFile(filePath)
+          if (raw === null) return null
+          const { startedAt, endedAt, messageCount, firstPrompt } = summarize(raw)
+          return {
+            id: basename(file, '.jsonl'),
+            filePath,
+            startedAt: startedAt ?? st.birthtimeMs ?? null,
+            endedAt: endedAt ?? st.mtimeMs ?? null,
+            messageCount,
+            firstPrompt,
+          }
+        }),
+      )
     }),
   )
 
-  return summaries
-    .filter((s): s is SessionSummary => s !== null)
-    .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
+  // Dedupe by session id — the same transcript can be reached via both the
+  // literal data dir and the family scan; keep the most-recently-ended copy.
+  const byId = new Map<string, SessionSummary>()
+  for (const summary of perDir.flat()) {
+    if (summary === null) continue
+    const existing = byId.get(summary.id)
+    if (!existing || (summary.endedAt ?? 0) > (existing.endedAt ?? 0)) {
+      byId.set(summary.id, summary)
+    }
+  }
+
+  return [...byId.values()].sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
 }
 
 interface JsonlLine {

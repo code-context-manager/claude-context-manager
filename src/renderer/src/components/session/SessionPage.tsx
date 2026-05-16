@@ -164,6 +164,7 @@ export function SessionPage() {
           <SessionFileTree
             tree={sessionView.tree}
             snapshot={sessionView.snapshot}
+            worktree={sessionView.worktree}
             selectedPath={selectedPath}
             selectedNonFs={selectedNonFs}
             onSelect={(node) => setDetailSelection({ kind: 'session-file', node })}

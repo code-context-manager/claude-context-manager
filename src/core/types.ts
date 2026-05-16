@@ -383,4 +383,10 @@ export interface SessionTree {
 export interface SessionView {
   snapshot: LoadedContextSnapshot
   tree: SessionTree
+  /** Set when this session ran inside a git-worktree checkout: the worktree
+   *  directory name (e.g. "suspicious-knuth-46f895"). Null for sessions that
+   *  ran in the main checkout. The tree is rooted at the worktree (that's the
+   *  cwd Claude Code actually used) but labelled as the parent repo; this
+   *  field lets the UI note which checkout it was. */
+  worktree: string | null
 }

@@ -76,6 +76,16 @@ describe('computeProjectStaticLoad', () => {
     expect(mem?.tokens).toBeGreaterThan(0)
   })
 
+  it('keys MEMORY.md to the family base when the path is a worktree', async () => {
+    const worktree = '/proj/.claude/worktrees/zen-gauss'
+    // Memory only exists at the parent repo's project dir, not the worktree's.
+    const fs = fakeFs({ [getProjectMemoryPath('/proj')]: '- a\n'.repeat(50) })
+    const result = await computeProjectStaticLoad(fs, worktree)
+    const mem = result.entries.find((e) => e.kind === 'memory')
+    expect(mem).toBeDefined()
+    expect(mem?.filePath).toBe(getProjectMemoryPath('/proj'))
+  })
+
   it('emits always-apply rules but skips path-scoped ones', async () => {
     const rulesDir = join(projectPath, '.claude', 'rules')
     const fs = fakeFs(

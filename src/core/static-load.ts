@@ -8,7 +8,11 @@ import {
   MCP_INDEX_TOKENS,
   SYSTEM_PROMPT_TOKENS,
 } from './constants'
-import { getGlobalClaudeMdPath, getProjectMemoryPath } from './path-utils'
+import {
+  getGlobalClaudeMdPath,
+  getProjectMemoryPath,
+  getProjectFamilyBasePath,
+} from './path-utils'
 import { parseRuleFrontmatter } from './claude-parser'
 import { folderChain } from './folder-chain'
 import { firstMatchingGlob } from './glob-match'
@@ -73,7 +77,10 @@ export async function computeProjectStaticLoad(
     })
   }
 
-  const memoryPath = getProjectMemoryPath(absProject)
+  // Memory is keyed to the project *family* base, not the cwd: Claude Code
+  // stores a worktree session's MEMORY.md under the parent repo's project
+  // dir, not the worktree's own. For a non-worktree path this is identity.
+  const memoryPath = getProjectMemoryPath(getProjectFamilyBasePath(absProject))
   const memory = await fs.readFile(memoryPath)
   if (memory) {
     const split = splitMemoryWindow(memory)

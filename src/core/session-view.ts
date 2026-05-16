@@ -11,6 +11,7 @@ import type {
   StaticLoadResult,
 } from './types'
 import { familyDataDirs } from './project-family'
+import { getProjectFamilyBasePath, getProjectDisplayName } from './path-utils'
 import { ACTIVE_SESSION_STALE_MS } from './constants'
 import { computeLoadedContext } from './loaded-context'
 import { computeFileStaticLoad, computeProjectStaticLoad } from './static-load'
@@ -111,7 +112,18 @@ export async function buildSessionView(
   const raw = await fs.readFile(ref.jsonlPath)
   if (raw === null) return null
 
-  const snapshot = computeLoadedContext(raw, ref.sessionId, projectPath)
+  // `projectPath` is the *grouped* project (the family base after the picker
+  // collapses worktrees). But this session may have run inside a worktree,
+  // whose cwd is its own checkout dir — that's the root Claude Code actually
+  // resolved CLAUDE.md / rules / the file tree against. Analyse against the
+  // transcript's authoritative cwd so "what loaded" lines up with "what was
+  // available". Memory stays family-keyed inside computeProjectStaticLoad.
+  const analysisRoot = extractSessionCwd(raw) ?? projectPath
+  const base = getProjectFamilyBasePath(analysisRoot)
+  const isWorktree = base !== analysisRoot
+  const worktree = isWorktree ? basename(analysisRoot) : null
+
+  const snapshot = computeLoadedContext(raw, ref.sessionId, analysisRoot)
   if (ref.lastActivityMs > 0) {
     snapshot.lastActivityAt = ref.lastActivityMs
     snapshot.staleSession = Date.now() - ref.lastActivityMs > ACTIVE_SESSION_STALE_MS
@@ -122,7 +134,7 @@ export async function buildSessionView(
   // Layer the project-static bundle onto file-shaped entries (CLAUDE.mds,
   // MEMORY.md, rule files). Synthetic entries (system prompt, env info,
   // mcp-index) live elsewhere on the snapshot, not in `files`.
-  const projectStatic = await computeProjectStaticLoad(fs, projectPath, cli)
+  const projectStatic = await computeProjectStaticLoad(fs, analysisRoot, cli)
   applyProjectStaticToFiles(snapshot, projectStatic)
 
   // For every file that arrived via tool-call evidence, ask "if this file
@@ -135,7 +147,7 @@ export async function buildSessionView(
   )
   for (const f of seedFiles) {
     const cached = fileStaticCache.get(f.path)
-    const fileStatic = cached ?? (await computeFileStaticLoad(fs, projectPath, f.path))
+    const fileStatic = cached ?? (await computeFileStaticLoad(fs, analysisRoot, f.path))
     if (!cached) fileStaticCache.set(f.path, fileStatic)
     applyFileStaticToFiles(snapshot, fileStatic, f.path)
   }
@@ -145,8 +157,30 @@ export async function buildSessionView(
   rebuildMemory(snapshot)
 
   await annotateStale(fs, snapshot)
-  const tree = await buildTree(fs, projectPath, snapshot)
-  return { snapshot, tree }
+  const tree = await buildTree(fs, analysisRoot, snapshot)
+  // The tree is rooted at the worktree (the real cwd) but should read as the
+  // project — the worktree id is surfaced separately via `worktree`.
+  if (isWorktree) tree.projectRoot.name = getProjectDisplayName(base)
+  return { snapshot, tree, worktree }
+}
+
+/**
+ * The session's working directory as recorded in the transcript. Claude Code
+ * stamps `cwd` on most JSONL lines; the first one wins. Null when no line
+ * carries a usable cwd (older/edge transcripts) — callers fall back to the
+ * grouped project path.
+ */
+function extractSessionCwd(raw: string): string | null {
+  for (const line of raw.split('\n')) {
+    if (!line.includes('"cwd"')) continue
+    try {
+      const obj = JSON.parse(line) as { cwd?: unknown }
+      if (typeof obj.cwd === 'string' && obj.cwd.length > 0) return obj.cwd
+    } catch {
+      // malformed line — keep scanning
+    }
+  }
+  return null
 }
 
 function mechanismsToToolCallReasons(f: LoadedFile): LoadReason[] {

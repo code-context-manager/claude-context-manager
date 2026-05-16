@@ -6,6 +6,8 @@ import {
   getGlobalClaudeMdPath,
   getProjectDataDir,
   getProjectsDir,
+  getProjectMemoryPath,
+  getProjectDisplayName,
 } from '../path-utils'
 import { join } from 'path'
 
@@ -292,5 +294,46 @@ describe('buildSessionView / resolveSessionRef — worktree-aware resolution', (
     const fs = familyFs({}, { [projectsRoot]: [] }, {})
     expect(await resolveSessionRef(fs, mainPath)).toBeNull()
     expect(await buildSessionView(fs, mainPath)).toBeNull()
+  })
+
+  it('roots a worktree session at its cwd, labels it as the repo, keeps memory family-keyed', async () => {
+    const wtClaudeMd = join(worktreePath, 'CLAUDE.md')
+    const memoryPath = getProjectMemoryPath(mainPath)
+    const wtJsonl = join(wtDir, 's1.jsonl')
+    const fs = familyFs(
+      {
+        [wtJsonl]: jsonl({
+          type: 'user',
+          cwd: worktreePath,
+          message: { content: 'hi' },
+        }),
+        [wtClaudeMd]: '# Worktree checkout rules\n',
+        [memoryPath]: '- remembered fact\n',
+      },
+      {
+        [projectsRoot]: [encodeProjectPath(worktreePath)],
+        [wtDir]: ['s1.jsonl'],
+        [worktreePath]: ['CLAUDE.md'],
+      },
+      { [wtJsonl]: Date.now() },
+    )
+
+    // Called with the *grouped* base path, as the picker now does.
+    const view = await buildSessionView(fs, mainPath, 's1')
+    expect(view).not.toBeNull()
+
+    // Surfaced worktree id, but tree reads as the parent repo.
+    expect(view!.worktree).toBe('wt1')
+    expect(view!.tree.projectRoot.name).toBe(getProjectDisplayName(mainPath))
+
+    // The worktree's own CLAUDE.md is the project CLAUDE.md (not a folder doc).
+    const wtEntry = view!.snapshot.files.find((f) => f.path === wtClaudeMd)
+    expect(wtEntry?.reasons).toEqual([
+      { kind: 'project-static', via: { kind: 'project-claude-md' } },
+    ])
+
+    // Memory resolved at the base repo's project dir, not the worktree's.
+    const memEntry = view!.snapshot.files.find((f) => f.path === memoryPath)
+    expect(memEntry).toBeDefined()
   })
 })

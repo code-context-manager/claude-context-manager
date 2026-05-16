@@ -8,6 +8,7 @@ import { NonFsTreeGroup } from './NonFsTreeGroup'
 interface Props {
   tree: SessionTree
   snapshot: LoadedContextSnapshot
+  worktree: string | null
   selectedPath: string | null
   selectedNonFs: NonFsSectionKind | null
   onSelect: (node: SessionTreeNode) => void
@@ -17,6 +18,7 @@ interface Props {
 export function SessionFileTree({
   tree,
   snapshot,
+  worktree,
   selectedPath,
   selectedNonFs,
   onSelect,
@@ -24,6 +26,11 @@ export function SessionFileTree({
 }: Props) {
   return (
     <div className="flex-1 overflow-y-auto text-xs font-mono">
+      {worktree && (
+        <div className="px-3 py-1 text-[10px] text-content-muted">
+          worktree: {worktree}
+        </div>
+      )}
       <TreeNode node={tree.projectRoot} depth={0} selectedPath={selectedPath} onSelect={onSelect} defaultOpen />
       {tree.externalRoots.length > 0 && (
         <div className="mt-4">

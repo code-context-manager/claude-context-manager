@@ -10,7 +10,13 @@ import type {
   StaticLoadEntry,
   StaticLoadResult,
 } from './types'
-import { getProjectDataDir } from './path-utils'
+import {
+  encodeProjectPath,
+  getProjectDataDir,
+  getProjectFamilyBasePath,
+  getProjectsDir,
+} from './path-utils'
+import { ACTIVE_SESSION_STALE_MS } from './constants'
 import { computeLoadedContext } from './loaded-context'
 import { computeFileStaticLoad, computeProjectStaticLoad } from './static-load'
 import type { FsReader } from './fs'
@@ -35,24 +41,93 @@ const DEFAULT_IGNORE = new Set([
 const MAX_TREE_DEPTH = 8
 const MAX_TREE_ENTRIES = 5000
 
-/** Return the most recently modified JSONL for a project, or null. */
+export interface SessionRef {
+  sessionId: string
+  jsonlPath: string
+  /** Transcript file mtime (epoch ms); 0 when the fs adapter doesn't report one. */
+  lastActivityMs: number
+}
+
+/**
+ * Every data dir belonging to this project's "family": the main checkout plus
+ * any git-worktree checkouts (Claude Code stores worktree sessions under a
+ * separate encoded dir keyed by the worktree cwd). Without scanning the
+ * family, "the active session" resolved from the main path silently returns a
+ * stale session while the live one sits in a worktree dir.
+ */
+async function familyDataDirs(
+  fs: FsReader,
+  projectPath: string,
+): Promise<string[]> {
+  const encodedBase = encodeProjectPath(getProjectFamilyBasePath(projectPath))
+  const root = getProjectsDir()
+  // Always include the literal dir for the passed path so resolution still
+  // works when the projects root isn't listable.
+  const dirs = new Set<string>([
+    getProjectDataDir(projectPath),
+    join(root, encodedBase),
+  ])
+  const names = await fs.readdir(root)
+  if (names) {
+    const worktreePrefix = `${encodedBase}--claude-worktrees-`
+    for (const n of names) {
+      if (n === encodedBase || n.startsWith(worktreePrefix)) {
+        dirs.add(join(root, n))
+      }
+    }
+  }
+  return [...dirs]
+}
+
+/**
+ * Resolve a session to its on-disk transcript across the whole project
+ * family. With an explicit id, find that transcript wherever it lives; with
+ * none, pick the genuinely most-recently-active session across main +
+ * worktree dirs.
+ */
+export async function resolveSessionRef(
+  fs: FsReader,
+  projectPath: string,
+  sessionId?: string,
+): Promise<SessionRef | null> {
+  const dirs = await familyDataDirs(fs, projectPath)
+  if (sessionId) {
+    for (const dir of dirs) {
+      const jsonlPath = join(dir, `${sessionId}.jsonl`)
+      const st = await fs.stat(jsonlPath)
+      if (st?.isFile) {
+        return { sessionId, jsonlPath, lastActivityMs: st.mtimeMs }
+      }
+    }
+    return null
+  }
+  let best: SessionRef | null = null
+  for (const dir of dirs) {
+    const entries = await fs.readdir(dir)
+    if (!entries) continue
+    for (const entry of entries) {
+      if (!entry.endsWith('.jsonl')) continue
+      const jsonlPath = join(dir, entry)
+      const st = await fs.stat(jsonlPath)
+      if (!st || !st.isFile) continue
+      if (!best || st.mtimeMs > best.lastActivityMs) {
+        best = {
+          sessionId: entry.replace(/\.jsonl$/, ''),
+          jsonlPath,
+          lastActivityMs: st.mtimeMs,
+        }
+      }
+    }
+  }
+  return best
+}
+
+/** Most-recently-active session id across the project family, or null. */
 export async function latestSessionId(
   fs: FsReader,
   projectPath: string,
 ): Promise<string | null> {
-  const dir = getProjectDataDir(projectPath)
-  const entries = await fs.readdir(dir)
-  if (!entries) return null
-  let best: { id: string; mtime: number } | null = null
-  for (const entry of entries) {
-    if (!entry.endsWith('.jsonl')) continue
-    const st = await fs.stat(join(dir, entry))
-    if (!st || !st.isFile) continue
-    if (!best || st.mtimeMs > best.mtime) {
-      best = { id: entry.replace(/\.jsonl$/, ''), mtime: st.mtimeMs }
-    }
-  }
-  return best?.id ?? null
+  return (await resolveSessionRef(fs, projectPath))?.sessionId ?? null
 }
 
 /**
@@ -64,14 +139,19 @@ export async function latestSessionId(
 export async function buildSessionView(
   fs: FsReader,
   projectPath: string,
-  sessionId: string,
+  sessionId?: string,
   cli?: ClaudeCli,
 ): Promise<SessionView | null> {
-  const jsonlPath = join(getProjectDataDir(projectPath), `${sessionId}.jsonl`)
-  const raw = await fs.readFile(jsonlPath)
+  const ref = await resolveSessionRef(fs, projectPath, sessionId)
+  if (!ref) return null
+  const raw = await fs.readFile(ref.jsonlPath)
   if (raw === null) return null
 
-  const snapshot = computeLoadedContext(raw, sessionId, projectPath)
+  const snapshot = computeLoadedContext(raw, ref.sessionId, projectPath)
+  if (ref.lastActivityMs > 0) {
+    snapshot.lastActivityAt = ref.lastActivityMs
+    snapshot.staleSession = Date.now() - ref.lastActivityMs > ACTIVE_SESSION_STALE_MS
+  }
   // Seed reasons from the JSONL evidence captured by the parser.
   for (const f of snapshot.files) f.reasons = mechanismsToToolCallReasons(f)
 

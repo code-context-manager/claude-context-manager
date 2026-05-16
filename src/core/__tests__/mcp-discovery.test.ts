@@ -68,6 +68,35 @@ describe('discoverMcpServers', () => {
     expect(servers[0].config?.command).toBe('node')
   })
 
+  it('dedupes a server registered at both user and project scope (narrowest wins)', async () => {
+    // The real-world bug: claude-context-manager self-registers user-scope in
+    // ~/.claude.json's top-level mcpServers AND a project-scope entry also
+    // exists under projects[<path>].mcpServers. Claude Code loads it once.
+    const fs = fakeFs({
+      [getUserClaudeJsonPath()]: JSON.stringify({
+        mcpServers: {
+          'claude-context-manager': { command: 'node', args: ['user.mjs'] },
+        },
+        projects: {
+          [projectPath]: {
+            mcpServers: {
+              'claude-context-manager': { command: 'node', args: ['proj.mjs'] },
+            },
+          },
+        },
+      }),
+    })
+
+    const servers = await discoverMcpServers(fs, projectPath)
+    expect(servers).toHaveLength(1)
+    // local (project-scope) is narrower than user → it wins.
+    expect(servers[0]).toMatchObject({
+      name: 'claude-context-manager',
+      scope: 'project',
+      claudeScope: 'local',
+    })
+  })
+
   it('finds servers across all four filesystem locations', async () => {
     const fs = fakeFs({
       [getGlobalSettingsPath()]: JSON.stringify({

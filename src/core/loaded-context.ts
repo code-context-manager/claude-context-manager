@@ -230,6 +230,10 @@ export function computeLoadedContext(
     claudeMdChain,
     skillsInvoked,
     mcpSchemaFetches,
+    // Filesystem-derived; filled by the session-view builder which knows
+    // the resolved transcript path. Defaults keep this pure parser honest.
+    lastActivityAt: null,
+    staleSession: false,
   }
 
   function handleToolResult(

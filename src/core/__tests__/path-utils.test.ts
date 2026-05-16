@@ -3,6 +3,7 @@ import {
   encodeProjectPath,
   decodeProjectDirName,
   getProjectDisplayName,
+  getProjectFamilyBasePath,
 } from '../path-utils'
 
 describe('encodeProjectPath', () => {
@@ -70,6 +71,35 @@ describe('encode/decode round-trip', () => {
   it('round-trips a Windows path with no dashes in any segment', () => {
     const original = 'C:\\Users\\ruskin\\Documents\\app'
     expect(decodeProjectDirName(encodeProjectPath(original))).toBe(original)
+  })
+})
+
+describe('getProjectFamilyBasePath', () => {
+  it('strips a trailing POSIX worktree segment', () => {
+    expect(
+      getProjectFamilyBasePath('/Users/me/repo/.claude/worktrees/zen-gauss-c522fd'),
+    ).toBe('/Users/me/repo')
+  })
+
+  it('strips a trailing Windows worktree segment', () => {
+    expect(
+      getProjectFamilyBasePath('C:\\Users\\me\\repo\\.claude\\worktrees\\zen-gauss'),
+    ).toBe('C:\\Users\\me\\repo')
+  })
+
+  it('tolerates a trailing slash on the worktree segment', () => {
+    expect(
+      getProjectFamilyBasePath('/Users/me/repo/.claude/worktrees/wt1/'),
+    ).toBe('/Users/me/repo')
+  })
+
+  it('leaves a plain project path unchanged', () => {
+    expect(getProjectFamilyBasePath('/Users/me/repo')).toBe('/Users/me/repo')
+  })
+
+  it('does not strip a non-trailing worktrees-looking segment', () => {
+    const p = '/Users/me/.claude/worktrees/x/src/app.ts'
+    expect(getProjectFamilyBasePath(p)).toBe(p)
   })
 })
 

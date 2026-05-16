@@ -40,15 +40,46 @@ export async function discoverMcpServers(
     const cliServers = await cli.listMcpServers(projectPath)
     if (cliServers !== null) {
       const sourceFile = getUserClaudeJsonPath()
-      return cliServers.map((s) => ({
-        name: s.name,
-        scope: cliMcpScopeToContextScope(s.scope),
-        claudeScope: s.scope ?? 'project',
-        sourceFile,
-      }))
+      return dedupeMcpServers(
+        cliServers.map((s) => ({
+          name: s.name,
+          scope: cliMcpScopeToContextScope(s.scope),
+          claudeScope: s.scope ?? 'project',
+          sourceFile,
+        })),
+      )
     }
   }
-  return discoverFromFilesystem(fs, projectPath)
+  return dedupeMcpServers(await discoverFromFilesystem(fs, projectPath))
+}
+
+// Narrowest registration wins, mirroring Claude Code's own resolution.
+const SCOPE_PRECEDENCE: Record<ClaudeMcpScope, number> = {
+  local: 0,
+  project: 1,
+  user: 2,
+}
+
+/**
+ * Claude Code loads one server per name even when it is registered at several
+ * scopes (e.g. user-scope in `~/.claude.json` *and* project-scope under
+ * `projects[<path>].mcpServers`) — the narrowest wins (local > project >
+ * user). Without this, the inventory and static-load views double-count the
+ * server and its index tokens for a server Claude Code only loads once.
+ */
+export function dedupeMcpServers(
+  servers: DiscoveredMcpServer[],
+): DiscoveredMcpServer[] {
+  const byName = new Map<string, DiscoveredMcpServer>()
+  for (const s of servers) {
+    const cur = byName.get(s.name)
+    if (!cur || scopeRank(s) < scopeRank(cur)) byName.set(s.name, s)
+  }
+  return [...byName.values()]
+}
+
+function scopeRank(s: DiscoveredMcpServer): number {
+  return SCOPE_PRECEDENCE[s.claudeScope] ?? SCOPE_PRECEDENCE.project
 }
 
 function cliMcpScopeToContextScope(

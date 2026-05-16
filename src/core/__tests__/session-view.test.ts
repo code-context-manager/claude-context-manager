@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import type { FsReader } from '../fs'
-import { buildSessionView } from '../session-view'
-import { getGlobalClaudeMdPath, getProjectDataDir } from '../path-utils'
+import { buildSessionView, resolveSessionRef } from '../session-view'
+import {
+  encodeProjectPath,
+  getGlobalClaudeMdPath,
+  getProjectDataDir,
+  getProjectsDir,
+} from '../path-utils'
 import { join } from 'path'
 
 function jsonl(...lines: unknown[]): string {
@@ -182,5 +187,110 @@ describe('buildSessionView — auto-loaded CLAUDE.md', () => {
     })
     const view = await buildSessionView(fs, projectPath, sessionId)
     expect(view!.snapshot.claudeMdChain).toEqual([])
+  })
+})
+
+describe('buildSessionView / resolveSessionRef — worktree-aware resolution', () => {
+  const mainPath = '/repo'
+  const worktreePath = '/repo/.claude/worktrees/wt1'
+  const projectsRoot = getProjectsDir()
+  const mainDir = join(projectsRoot, encodeProjectPath(mainPath))
+  const wtDir = join(projectsRoot, encodeProjectPath(worktreePath))
+
+  /** fakeFs with per-file mtimes and a listable projects root. */
+  function familyFs(
+    files: Record<string, string>,
+    dirs: Record<string, string[]>,
+    mtimes: Record<string, number>,
+  ): FsReader {
+    return {
+      async readFile(path) {
+        return files[path] ?? null
+      },
+      async readdir(path) {
+        return dirs[path] ?? null
+      },
+      async readdirWithTypes(path) {
+        const entries = dirs[path]
+        if (!entries) return null
+        return entries.map((name) => ({
+          name,
+          isDirectory: !!dirs[join(path, name)],
+        }))
+      },
+      async stat(path) {
+        if (files[path] !== undefined) {
+          return {
+            isFile: true,
+            isDirectory: false,
+            mtimeMs: mtimes[path] ?? 0,
+            birthtimeMs: 0,
+          }
+        }
+        if (dirs[path]) {
+          return { isFile: false, isDirectory: true, mtimeMs: 0, birthtimeMs: 0 }
+        }
+        return null
+      },
+    }
+  }
+
+  const oldJsonl = join(mainDir, 'old.jsonl')
+  const newJsonl = join(wtDir, 'new.jsonl')
+  const raw = jsonl({ type: 'user', message: { content: 'hi' } })
+
+  it('picks the newest session across main + worktree dirs, not just the main path', async () => {
+    const fresh = Date.now()
+    const fs = familyFs(
+      { [oldJsonl]: raw, [newJsonl]: raw },
+      {
+        [projectsRoot]: [encodeProjectPath(mainPath), encodeProjectPath(worktreePath)],
+        [mainDir]: ['old.jsonl'],
+        [wtDir]: ['new.jsonl'],
+      },
+      { [oldJsonl]: 1000, [newJsonl]: fresh },
+    )
+
+    const ref = await resolveSessionRef(fs, mainPath)
+    expect(ref?.sessionId).toBe('new')
+    expect(ref?.jsonlPath).toBe(newJsonl)
+
+    const view = await buildSessionView(fs, mainPath)
+    expect(view!.snapshot.sessionId).toBe('new')
+    expect(view!.snapshot.lastActivityAt).toBe(fresh)
+    expect(view!.snapshot.staleSession).toBe(false)
+  })
+
+  it('flags a long-idle resolved session as staleSession', async () => {
+    const fs = familyFs(
+      { [oldJsonl]: raw },
+      { [projectsRoot]: [encodeProjectPath(mainPath)], [mainDir]: ['old.jsonl'] },
+      { [oldJsonl]: 1000 },
+    )
+    const view = await buildSessionView(fs, mainPath)
+    expect(view!.snapshot.sessionId).toBe('old')
+    expect(view!.snapshot.lastActivityAt).toBe(1000)
+    expect(view!.snapshot.staleSession).toBe(true)
+  })
+
+  it('resolves an explicit sessionId living in a worktree dir from the main path', async () => {
+    const fs = familyFs(
+      { [newJsonl]: raw },
+      {
+        [projectsRoot]: [encodeProjectPath(mainPath), encodeProjectPath(worktreePath)],
+        [wtDir]: ['new.jsonl'],
+      },
+      { [newJsonl]: Date.now() },
+    )
+    const ref = await resolveSessionRef(fs, mainPath, 'new')
+    expect(ref?.jsonlPath).toBe(newJsonl)
+    const view = await buildSessionView(fs, mainPath, 'new')
+    expect(view!.snapshot.sessionId).toBe('new')
+  })
+
+  it('returns null when no session exists anywhere in the family', async () => {
+    const fs = familyFs({}, { [projectsRoot]: [] }, {})
+    expect(await resolveSessionRef(fs, mainPath)).toBeNull()
+    expect(await buildSessionView(fs, mainPath)).toBeNull()
   })
 })

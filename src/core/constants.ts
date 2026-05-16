@@ -24,3 +24,10 @@ export const MCP_INDEX_TOKENS = 120
  * node. See docs/decisions/0007.
  */
 export const HOOK_BRANCH_CAP = 8
+
+/**
+ * A resolved "active" session with no activity for longer than this is
+ * flagged `staleSession` so callers (the model via the MCP, the UI) don't
+ * present a long-idle session as the current loaded context.
+ */
+export const ACTIVE_SESSION_STALE_MS = 30 * 60 * 1000

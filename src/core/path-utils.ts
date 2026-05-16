@@ -83,6 +83,25 @@ export function getProjectDataDir(projectPath: string): string {
 }
 
 /**
+ * Strip a trailing git-worktree segment so worktree checkouts resolve to the
+ * same "project family" as the main checkout. Claude Code stores worktree
+ * sessions under a *separate* encoded data dir (the worktree's own cwd), so
+ * resolving "the active session" from the main path alone silently misses the
+ * session you are actually in. Callers expand this base back into every
+ * family data dir (main + `…--claude-worktrees-*`).
+ *
+ *   /repo/.claude/worktrees/zen-gauss   → /repo
+ *   C:\repo\.claude\worktrees\zen-gauss → C:\repo
+ *   /repo (no worktree segment)         → /repo
+ */
+export function getProjectFamilyBasePath(projectPath: string): string {
+  return projectPath.replace(
+    /[\\/]\.claude[\\/]worktrees[\\/][^\\/]+[\\/]?$/,
+    '',
+  )
+}
+
+/**
  * Get the memory directory for a specific project.
  */
 export function getProjectMemoryPath(projectPath: string): string {

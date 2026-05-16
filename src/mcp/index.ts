@@ -12,7 +12,7 @@ import { nodeFsReader } from '../core/fs'
 import { probeFile } from '../core/probe'
 import { scanProject } from '../core/scanner'
 import { listSessionsForProject } from '../core/sessions'
-import { buildSessionView, latestSessionId } from '../core/session-view'
+import { buildSessionView } from '../core/session-view'
 import {
   computeFileStaticLoad,
   computeProjectStaticLoad,
@@ -145,8 +145,11 @@ server.registerTool(
     description:
       'Return the live "what is loaded in context" snapshot for one Claude Code ' +
       'session — the same data the desktop Session view shows. Defaults to the ' +
-      'most recently active session for the project; pass sessionId for a ' +
-      'specific one (use list_sessions to discover ids). Each loaded file carries ' +
+      'most recently active session for the project — including sessions from ' +
+      'git worktrees of the same project — and reports `lastActivityAt` and a ' +
+      '`staleSession` flag so a long-idle session is not mistaken for the live ' +
+      'context. Pass sessionId for a specific one (use list_sessions to ' +
+      'discover ids). Each loaded file carries ' +
       'a `reasons` array (provenance): tool-call entries derived from the JSONL ' +
       'transcript, project-static / global-static entries from the auto-loaded ' +
       'bundle, and file-static entries showing which loaded file pulled in a ' +
@@ -165,25 +168,20 @@ server.registerTool(
     },
   },
   async ({ projectPath, sessionId }) => {
-    const id = sessionId ?? (await latestSessionId(fs, projectPath))
-    if (!id) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify({ error: 'No sessions found for project', projectPath }, null, 2),
-          },
-        ],
-      }
-    }
-    const view = await buildSessionView(fs, projectPath, id)
+    const view = await buildSessionView(fs, projectPath, sessionId)
     if (!view) {
       return {
         content: [
           {
             type: 'text',
             text: JSON.stringify(
-              { error: 'Session JSONL not found or unreadable', projectPath, sessionId: id },
+              {
+                error: sessionId
+                  ? 'Session JSONL not found or unreadable'
+                  : 'No sessions found for project',
+                projectPath,
+                ...(sessionId ? { sessionId } : {}),
+              },
               null,
               2,
             ),

@@ -344,6 +344,15 @@ export interface LoadedContextSnapshot {
   claudeMdChain: ClaudeMdEntry[]
   skillsInvoked: SkillInvocation[]
   mcpSchemaFetches: McpSchemaFetch[]
+  /** Epoch ms of the resolved session's most recent activity (transcript file
+   *  mtime). Null when unknown. Lets a consumer judge whether the "active"
+   *  session is actually current rather than a stale one from another
+   *  worktree/checkout. Set by the session-view builder. */
+  lastActivityAt: number | null
+  /** True when the resolved active session has had no activity for longer
+   *  than ACTIVE_SESSION_STALE_MS. Guards against treating a long-idle
+   *  session as the live loaded context. Set by the session-view builder. */
+  staleSession: boolean
 }
 
 /** Node in the merged session + on-disk file tree. */

@@ -4,6 +4,7 @@ import {
   encodeProjectPath,
   decodeProjectDirName,
   getProjectDisplayName,
+  getProjectFamilyBasePath,
 } from './path-utils'
 import type { Project } from './types'
 import type { FsReader } from './fs'
@@ -87,16 +88,35 @@ export async function listProjects(fs: FsReader): Promise<Project[]> {
     projectPaths.add(cwd)
   }
 
+  // 4. Collapse git-worktree checkouts into their parent repo. A worktree
+  //    under `<repo>/.claude/worktrees/<name>` is an internal sandbox of the
+  //    repo, not a project the user picked, so it should not surface as its
+  //    own picker entry. Group every path by its family base path and roll
+  //    `lastUsed` up to the most recent activity across the whole family —
+  //    selecting the repo then resolves sessions across all checkouts (the
+  //    session resolver is already worktree-aware).
+  const basePaths = new Set<string>()
+  const baseLastUsed = new Map<string, number>()
+  for (const projectPath of projectPaths) {
+    const base = getProjectFamilyBasePath(projectPath)
+    basePaths.add(base)
+    const used = lastUsedMap.get(projectPath)
+    if (used != null) {
+      const existing = baseLastUsed.get(base)
+      if (existing == null || used > existing) baseLastUsed.set(base, used)
+    }
+  }
+
   // Build project list
   const projects: Project[] = await Promise.all(
-    [...projectPaths].map(async (projectPath) => {
+    [...basePaths].map(async (projectPath) => {
       const s = await fs.stat(projectPath)
       const exists = s?.isDirectory ?? false
       const name = getProjectDisplayName(projectPath)
       return {
         path: projectPath,
         name,
-        lastUsed: lastUsedMap.get(projectPath) ?? null,
+        lastUsed: baseLastUsed.get(projectPath) ?? null,
         exists,
       }
     }),

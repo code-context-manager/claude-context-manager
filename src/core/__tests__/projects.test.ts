@@ -31,7 +31,7 @@ describe('listProjects', () => {
   const projectsDir = getProjectsDir()
   const sessionsDir = join(projectsDir, '..', 'sessions')
 
-  it('uses the cwd from session JSON to resolve a Windows worktree dir name', async () => {
+  it('collapses a worktree checkout into its parent repo (Windows path)', async () => {
     const winCwd =
       'C:\\Users\\ruskin\\Documents\\refurb-stock-backend\\.claude\\worktrees\\elated-mclean-f2aacf'
     const encodedDir =
@@ -51,12 +51,12 @@ describe('listProjects', () => {
     )
 
     expect(projects).toHaveLength(1)
-    expect(projects[0].path).toBe(winCwd)
-    expect(projects[0].name).toBe('elated-mclean-f2aacf')
+    expect(projects[0].path).toBe('C:\\Users\\ruskin\\Documents\\refurb-stock-backend')
+    expect(projects[0].name).toBe('refurb-stock-backend')
     expect(projects[0].lastUsed).toBe(1000)
   })
 
-  it('falls back to JSONL peek when no session JSON references the dir', async () => {
+  it('collapses a worktree resolved via JSONL peek into its parent repo', async () => {
     const winCwd =
       'C:\\Users\\ruskin\\Documents\\refurb-stock-backend\\.claude\\worktrees\\elated-mclean-f2aacf'
     const encodedDir =
@@ -77,8 +77,43 @@ describe('listProjects', () => {
     )
 
     expect(projects).toHaveLength(1)
-    expect(projects[0].path).toBe(winCwd)
-    expect(projects[0].name).toBe('elated-mclean-f2aacf')
+    expect(projects[0].path).toBe('C:\\Users\\ruskin\\Documents\\refurb-stock-backend')
+    expect(projects[0].name).toBe('refurb-stock-backend')
+  })
+
+  it('merges main checkout and its worktrees into one entry with the latest lastUsed', async () => {
+    const repo = '/Users/ruskin/projects/ccm'
+    const wtA = `${repo}/.claude/worktrees/zen-gauss-c522fd`
+    const wtB = `${repo}/.claude/worktrees/infallible-hypatia-440890`
+
+    const projects = await listProjects(
+      fakeFs(
+        {
+          [join(sessionsDir, 's1.json')]: JSON.stringify({ cwd: repo, startedAt: 1000 }),
+          [join(sessionsDir, 's2.json')]: JSON.stringify({ cwd: wtA, startedAt: 3000 }),
+          [join(sessionsDir, 's3.json')]: JSON.stringify({ cwd: wtB, startedAt: 2000 }),
+        },
+        {
+          [sessionsDir]: ['s1.json', 's2.json', 's3.json'],
+          [projectsDir]: [
+            '-Users-ruskin-projects-ccm',
+            '-Users-ruskin-projects-ccm--claude-worktrees-zen-gauss-c522fd',
+            '-Users-ruskin-projects-ccm--claude-worktrees-infallible-hypatia-440890',
+          ],
+          [join(projectsDir, '-Users-ruskin-projects-ccm')]: [],
+          [join(projectsDir, '-Users-ruskin-projects-ccm--claude-worktrees-zen-gauss-c522fd')]: [],
+          [join(
+            projectsDir,
+            '-Users-ruskin-projects-ccm--claude-worktrees-infallible-hypatia-440890',
+          )]: [],
+        },
+      ),
+    )
+
+    expect(projects).toHaveLength(1)
+    expect(projects[0].path).toBe(repo)
+    expect(projects[0].name).toBe('ccm')
+    expect(projects[0].lastUsed).toBe(3000)
   })
 
   it('falls back to dash-decoding only when neither source has cwd', async () => {

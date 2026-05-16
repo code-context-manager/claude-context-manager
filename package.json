@@ -15,7 +15,7 @@
     "name": "Ruskin Janowski",
     "email": "ruskin.janowski@gmail.com"
   },
-  "license": "ISC",
+  "license": "MIT",
   "bin": {
     "claude-context-mcp": "out/mcp/index.mjs"
   },

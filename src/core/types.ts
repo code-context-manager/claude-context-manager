@@ -27,8 +27,9 @@ export interface ContextSource {
   tokenEstimate: number
   /** For rules: the path globs that trigger loading */
   pathGlobs?: string[]
-  /** For rules: true when the rule loads regardless of path */
-  alwaysApply?: boolean
+  /** For rules: true when the rule has no `paths` scope and so loads in every
+   *  session (same precedence as `.claude/CLAUDE.md`). */
+  unconditional?: boolean
   /** For skills: description from frontmatter */
   description?: string
   /** For MCP servers: structured config so the detail view can render fields
@@ -60,7 +61,6 @@ export interface McpDetails {
 export interface RuleFrontmatter {
   description?: string
   paths?: string[]
-  alwaysApply?: boolean
 }
 
 export interface SkillFrontmatter {
@@ -118,6 +118,7 @@ export type ProbeNodeKind =
   | 'global-claude-md'
   | 'project-claude-md'
   | 'folder-claude-md'
+  | 'claude-md-import'
   | 'memory'
   | 'rule'
   | 'skill'
@@ -163,7 +164,7 @@ export interface ProjectFileEntry {
 //
 // Two granularities, both pure functions of disk state:
 //  - project-static: what loads for ANY session in this project (global +
-//    project CLAUDE.md, MEMORY.md window, always-apply rules, MCP index,
+//    project CLAUDE.md, MEMORY.md window, unconditional rules, MCP index,
 //    plus the synthetic system-prompt/env-info placeholders).
 //  - file-static:    what additionally loads if a specific file is in scope
 //    (folder-chain CLAUDE.mds along the path, path-scoped rules whose globs
@@ -176,6 +177,7 @@ export type StaticLoadEntryKind =
   | 'global-claude-md'
   | 'project-claude-md'
   | 'folder-claude-md'
+  | 'claude-md-import'
   | 'memory'
   | 'rule'
   | 'mcp-index'
@@ -191,8 +193,8 @@ export interface StaticLoadEntry {
   filePath?: string
   /** For path-scoped rules: the globs from frontmatter that triggered the match. */
   pathGlobs?: string[]
-  /** True for an always-apply rule. */
-  alwaysApply?: boolean
+  /** True for an unconditional rule (no `paths` scope — loads every session). */
+  unconditional?: boolean
   /** For file-static entries: the file whose presence pulled this in. */
   triggeredBy?: string
   /** Free-form annotation (e.g. MEMORY.md overflow stats). */
@@ -232,7 +234,7 @@ export type LoadMechanism =
   | 'skill-invoke' // skill markdown loaded by Skill invocation
   | 'claude-md-auto' // CLAUDE.md auto-loaded by the folder chain
   | 'memory-auto' // MEMORY.md auto-loaded
-  | 'rule-auto' // .claude/rules entry auto-loaded (always-apply or path-match)
+  | 'rule-auto' // .claude/rules entry auto-loaded (unconditional or path-match)
 
 /**
  * Why one item is in context. A loaded file accumulates one or more reasons:
@@ -254,8 +256,9 @@ export type LoadVia =
   | { kind: 'global-claude-md' }
   | { kind: 'project-claude-md' }
   | { kind: 'folder-claude-md'; chainDir: string }
+  | { kind: 'claude-md-import'; importPath: string; importedBy: string }
   | { kind: 'memory' }
-  | { kind: 'rule-always-apply'; rulePath: string }
+  | { kind: 'rule-unconditional'; rulePath: string }
   | { kind: 'rule-glob'; rulePath: string; matchedGlob: string }
   | { kind: 'mcp-index'; server: string; sourceFile: string }
 

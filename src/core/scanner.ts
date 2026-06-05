@@ -1,4 +1,4 @@
-import { join, relative } from 'path'
+import { basename, join, relative } from 'path'
 import { ContextType, type ContextSource } from './types'
 import { estimateTokens } from './token-estimator'
 import { parseRuleFrontmatter, parseSkillFrontmatter } from './claude-parser'
@@ -10,6 +10,7 @@ import type { FsReader } from './fs'
 import type { ClaudeCli } from './claude-cli'
 import { discoverMcpServers } from './mcp-discovery'
 import { listAllSkillsForProject } from './skills'
+import { listAllRulesForProject } from './rules'
 
 /**
  * Scan all context sources for a given project directory.
@@ -40,43 +41,45 @@ export async function scanProject(
     })
   }
 
-  // Project CLAUDE.md
-  const projectMdPath = join(projectPath, 'CLAUDE.md')
-  const projectMd = await fs.readFile(projectMdPath)
-  if (projectMd) {
+  // Project CLAUDE.md — `./CLAUDE.md`, `./.claude/CLAUDE.md`, and the
+  // gitignored `./CLAUDE.local.md` all load when present.
+  for (const cand of [
+    { path: join(projectPath, 'CLAUDE.md'), name: 'Project CLAUDE.md' },
+    { path: join(projectPath, '.claude', 'CLAUDE.md'), name: '.claude/CLAUDE.md' },
+    { path: join(projectPath, 'CLAUDE.local.md'), name: 'CLAUDE.local.md' },
+  ]) {
+    const body = await fs.readFile(cand.path)
+    if (!body) continue
     sources.push({
       type: ContextType.ProjectClaudeMd,
       scope: 'project',
-      name: 'Project CLAUDE.md',
-      filePath: projectMdPath,
-      tokenEstimate: estimateTokens(projectMd),
+      name: cand.name,
+      filePath: cand.path,
+      tokenEstimate: estimateTokens(body),
     })
   }
 
   // Folder-level CLAUDE.md files (one level deep for now)
   await scanFolderClaudeMd(fs, projectPath, projectPath, sources)
 
-  // Rules
-  const rulesDir = join(projectPath, '.claude', 'rules')
-  const ruleEntries = await fs.readdir(rulesDir)
-  if (ruleEntries) {
-    for (const file of ruleEntries.filter((f) => f.endsWith('.md'))) {
-      const filePath = join(rulesDir, file)
-      const content = await fs.readFile(filePath)
-      if (content) {
-        const { meta } = parseRuleFrontmatter(content)
-        sources.push({
-          type: ContextType.Rule,
-          scope: 'project',
-          name: file,
-          filePath,
-          tokenEstimate: estimateTokens(content),
-          pathGlobs: meta.alwaysApply ? undefined : meta.paths,
-          alwaysApply: meta.alwaysApply === true ? true : undefined,
-          description: meta.description,
-        })
-      }
-    }
+  // Rules — user-scope (`~/.claude/rules/`) and project-scope, discovered
+  // recursively. A rule with no `paths` is unconditional (loads every session);
+  // one with `paths` is path-scoped.
+  for (const ref of await listAllRulesForProject(fs, projectPath)) {
+    const content = await fs.readFile(ref.filePath)
+    if (!content) continue
+    const { meta } = parseRuleFrontmatter(content)
+    const globs = meta.paths ?? []
+    sources.push({
+      type: ContextType.Rule,
+      scope: ref.scope,
+      name: basename(ref.filePath),
+      filePath: ref.filePath,
+      tokenEstimate: estimateTokens(content),
+      pathGlobs: globs.length > 0 ? globs : undefined,
+      unconditional: globs.length === 0 ? true : undefined,
+      description: meta.description,
+    })
   }
 
   // Skills (project + global)

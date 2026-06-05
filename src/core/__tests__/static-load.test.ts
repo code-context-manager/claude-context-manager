@@ -7,6 +7,7 @@ import {
   getGlobalClaudeMdPath,
   getProjectMemoryPath,
   getUserClaudeJsonPath,
+  getUserRulesDir,
 } from '../path-utils'
 
 function fakeFs(files: Record<string, string>, dirs: Record<string, string[]> = {}): FsReader {
@@ -86,20 +87,60 @@ describe('computeProjectStaticLoad', () => {
     expect(mem?.filePath).toBe(getProjectMemoryPath('/proj'))
   })
 
-  it('emits always-apply rules but skips path-scoped ones', async () => {
+  it('emits unconditional rules (no paths) but skips path-scoped ones', async () => {
     const rulesDir = join(projectPath, '.claude', 'rules')
     const fs = fakeFs(
       {
-        [join(rulesDir, 'always.md')]: '---\nalwaysApply: true\n---\nbody',
+        // No frontmatter at all → unconditional, the canonical Claude Code case.
+        [join(rulesDir, 'plain.md')]: 'just a rule body',
         [join(rulesDir, 'scoped.md')]: '---\npaths:\n  - src/**\n---\nbody',
       },
-      { [rulesDir]: ['always.md', 'scoped.md'] },
+      { [rulesDir]: ['plain.md', 'scoped.md'] },
     )
     const result = await computeProjectStaticLoad(fs, projectPath)
     const rules = result.entries.filter((e) => e.kind === 'rule')
     expect(rules).toHaveLength(1)
-    expect(rules[0].label).toBe('always.md')
-    expect(rules[0].alwaysApply).toBe(true)
+    expect(rules[0].label).toBe('plain.md')
+    expect(rules[0].unconditional).toBe(true)
+    expect(rules[0].scope).toBe('project')
+  })
+
+  it('emits user-scope (~/.claude/rules) unconditional rules as global', async () => {
+    const userRules = getUserRulesDir()
+    const fs = fakeFs(
+      { [join(userRules, 'prefs.md')]: '# my prefs' },
+      { [userRules]: ['prefs.md'] },
+    )
+    const result = await computeProjectStaticLoad(fs, projectPath)
+    const rules = result.entries.filter((e) => e.kind === 'rule')
+    expect(rules).toHaveLength(1)
+    expect(rules[0].scope).toBe('global')
+    expect(rules[0].via).toMatchObject({ kind: 'rule-unconditional' })
+  })
+
+  it('discovers rules in subdirectories recursively', async () => {
+    const rulesDir = join(projectPath, '.claude', 'rules')
+    const sub = join(rulesDir, 'backend')
+    const fs = fakeFs(
+      { [join(sub, 'db.md')]: 'db rule body' },
+      { [rulesDir]: ['backend'], [sub]: ['db.md'] },
+    )
+    const result = await computeProjectStaticLoad(fs, projectPath)
+    const rules = result.entries.filter((e) => e.kind === 'rule')
+    expect(rules.map((r) => r.label)).toEqual(['db.md'])
+  })
+
+  it('emits project CLAUDE.md from .claude/CLAUDE.md and CLAUDE.local.md', async () => {
+    const fs = fakeFs({
+      [join(projectPath, '.claude', 'CLAUDE.md')]: '# dotdir',
+      [join(projectPath, 'CLAUDE.local.md')]: '# local',
+    })
+    const result = await computeProjectStaticLoad(fs, projectPath)
+    const labels = result.entries
+      .filter((e) => e.kind === 'project-claude-md')
+      .map((e) => e.label)
+    expect(labels).toContain('.claude/CLAUDE.md')
+    expect(labels).toContain('CLAUDE.local.md')
   })
 
   it('emits mcp-index entries for project-local servers in ~/.claude.json (regression for static-load missing the dominant config path)', async () => {
@@ -136,6 +177,23 @@ describe('computeProjectStaticLoad', () => {
     const result = await computeProjectStaticLoad(fs, projectPath, cli)
     const mcp = result.entries.filter((e) => e.kind === 'mcp-index')
     expect(mcp.map((e) => e.label)).toEqual(['MCP: cli-server'])
+  })
+
+  it('expands @import references from the project CLAUDE.md into entries', async () => {
+    const fs = fakeFs({
+      [join(projectPath, 'CLAUDE.md')]: '# project\n\nSee @AGENTS.md for shared rules.',
+      [join(projectPath, 'AGENTS.md')]: 'a'.repeat(400),
+    })
+    const result = await computeProjectStaticLoad(fs, projectPath)
+    const imports = result.entries.filter((e) => e.kind === 'claude-md-import')
+    expect(imports).toHaveLength(1)
+    expect(imports[0].filePath).toBe(join(projectPath, 'AGENTS.md'))
+    expect(imports[0].scope).toBe('project')
+    expect(imports[0].tokens).toBeGreaterThan(0)
+    expect(imports[0].via).toMatchObject({
+      kind: 'claude-md-import',
+      importPath: join(projectPath, 'AGENTS.md'),
+    })
   })
 
   it('totalTokens sums all entry tokens', async () => {
@@ -179,16 +237,32 @@ describe('computeFileStaticLoad', () => {
     expect(rules[0].pathGlobs).toEqual(['src/**'])
   })
 
-  it('skips always-apply rules (those are project-static, not file-static)', async () => {
+  it('skips unconditional rules (those are project-static, not file-static)', async () => {
     const rulesDir = join(projectPath, '.claude', 'rules')
     const fs = fakeFs(
       {
-        [join(rulesDir, 'always.md')]: '---\nalwaysApply: true\n---\nbody',
+        [join(rulesDir, 'plain.md')]: 'unconditional body, no frontmatter',
       },
-      { [rulesDir]: ['always.md'] },
+      { [rulesDir]: ['plain.md'] },
     )
     const result = await computeFileStaticLoad(fs, projectPath, join(projectPath, 'a.ts'))
     expect(result.entries.filter((e) => e.kind === 'rule')).toEqual([])
+  })
+
+  it('matches a rule whose globs are quoted in YAML (the documented syntax)', async () => {
+    const filePath = join(projectPath, 'src', 'api', 'users.ts')
+    const rulesDir = join(projectPath, '.claude', 'rules')
+    const fs = fakeFs(
+      {
+        [join(rulesDir, 'api.md')]: '---\npaths:\n  - "src/api/**/*.ts"\n---\nbody',
+      },
+      { [rulesDir]: ['api.md'] },
+    )
+    const result = await computeFileStaticLoad(fs, projectPath, filePath)
+    const rules = result.entries.filter((e) => e.kind === 'rule')
+    expect(rules).toHaveLength(1)
+    expect(rules[0].label).toBe('api.md')
+    expect(rules[0].via).toMatchObject({ kind: 'rule-glob', matchedGlob: 'src/api/**/*.ts' })
   })
 
   it('returns no entries for files outside the project root', async () => {

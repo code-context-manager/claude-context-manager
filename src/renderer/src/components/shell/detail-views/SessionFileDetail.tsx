@@ -101,8 +101,10 @@ function viaKey(v: LoadVia): string {
   switch (v.kind) {
     case 'folder-claude-md':
       return `folder:${v.chainDir}`
-    case 'rule-always-apply':
-      return `always:${v.rulePath}`
+    case 'claude-md-import':
+      return `import:${v.importedBy}:${v.importPath}`
+    case 'rule-unconditional':
+      return `rule:${v.rulePath}`
     case 'rule-glob':
       return `rule:${v.rulePath}:${v.matchedGlob}`
     case 'mcp-index':
@@ -202,12 +204,23 @@ function describeGroup(g: StaticGroup): {
         headline: 'Folder CLAUDE.md',
         sub: <span className="font-mono">{g.via.chainDir}/CLAUDE.md</span>,
       }
-    case 'memory':
-      return { pill: scopePill, headline: 'MEMORY.md', sub: null }
-    case 'rule-always-apply':
+    case 'claude-md-import':
       return {
         pill: scopePill,
-        headline: <>Rule (always-apply)</>,
+        headline: <>CLAUDE.md @import</>,
+        sub: (
+          <>
+            <span className="font-mono">{fileBasename(g.via.importPath)}</span>{' '}
+            via <span className="font-mono">{fileBasename(g.via.importedBy)}</span>
+          </>
+        ),
+      }
+    case 'memory':
+      return { pill: scopePill, headline: 'MEMORY.md', sub: null }
+    case 'rule-unconditional':
+      return {
+        pill: scopePill,
+        headline: <>Rule (unconditional)</>,
         sub: <span className="font-mono">{fileBasename(g.via.rulePath)}</span>,
       }
     case 'rule-glob':

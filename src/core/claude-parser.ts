@@ -1,6 +1,23 @@
 import type { RuleFrontmatter, SkillFrontmatter, McpServerConfig, HookConfig } from './types'
 
 /**
+ * Strip a single layer of matching surrounding quotes. Claude Code's docs
+ * require glob patterns in `paths:` to be quoted in YAML (double-star globs
+ * must be quoted), so the quotes are part of the literal text our minimal
+ * parser sees — we must remove them or the glob never matches a real
+ * (unquoted) path.
+ */
+function unquote(s: string): string {
+  if (s.length >= 2) {
+    const first = s[0]
+    if ((first === '"' || first === "'") && s[s.length - 1] === first) {
+      return s.slice(1, -1)
+    }
+  }
+  return s
+}
+
+/**
  * Parse YAML-like frontmatter from a markdown file.
  * Returns the frontmatter as key-value pairs and the body content.
  */
@@ -21,7 +38,7 @@ export function parseFrontmatter(content: string): { frontmatter: Record<string,
       if (lastKey) {
         const arr = frontmatter[lastKey]
         if (Array.isArray(arr)) {
-          arr.push(line.replace(/^\s*-\s*/, '').trim())
+          arr.push(unquote(line.replace(/^\s*-\s*/, '').trim()))
         }
       }
       continue
@@ -31,14 +48,16 @@ export function parseFrontmatter(content: string): { frontmatter: Record<string,
     if (colonIdx === -1) continue
 
     const key = line.slice(0, colonIdx).trim()
-    const value = line.slice(colonIdx + 1).trim()
+    const rawValue = line.slice(colonIdx + 1).trim()
+    const value = unquote(rawValue)
+    const quoted = value !== rawValue
 
-    if (value === '') {
+    if (rawValue === '') {
       // Start of a list
       frontmatter[key] = []
-    } else if (value === 'true') {
+    } else if (!quoted && value === 'true') {
       frontmatter[key] = true
-    } else if (value === 'false') {
+    } else if (!quoted && value === 'false') {
       frontmatter[key] = false
     } else {
       frontmatter[key] = value
@@ -54,7 +73,6 @@ export function parseRuleFrontmatter(content: string): { meta: RuleFrontmatter; 
     meta: {
       description: frontmatter.description as string | undefined,
       paths: frontmatter.paths as string[] | undefined,
-      alwaysApply: frontmatter.alwaysApply as boolean | undefined,
     },
     body,
   }

@@ -67,6 +67,7 @@ const KIND_MAP: Record<StaticLoadEntry['kind'], ProbeNodeKind> = {
   'global-claude-md': 'global-claude-md',
   'project-claude-md': 'project-claude-md',
   'folder-claude-md': 'folder-claude-md',
+  'claude-md-import': 'claude-md-import',
   memory: 'memory',
   rule: 'rule',
   'mcp-index': 'mcp-index',
@@ -90,9 +91,11 @@ function staticEntryToNode(
   // copy the previous probe.ts hand-wrote.
   if (e.kind === 'folder-claude-md' && e.triggeredBy) {
     node.trigger = `On path to target: ${relative(absProject, absTarget)}`
+  } else if (e.kind === 'claude-md-import' && e.via?.kind === 'claude-md-import') {
+    node.trigger = `Imported by ${relative(absProject, e.via.importedBy)}`
   } else if (e.kind === 'rule') {
-    if (e.alwaysApply) {
-      node.trigger = 'alwaysApply'
+    if (e.unconditional) {
+      node.trigger = 'Unconditional rule — no path scope'
     } else if (e.pathGlobs) {
       const positive = e.pathGlobs.filter((g) => !g.trim().startsWith('!'))
       node.trigger = `matches: ${positive.join(', ')}`
@@ -105,6 +108,8 @@ function staticEntryToNode(
 
 function probeIdFor(e: StaticLoadEntry): string {
   if (e.kind === 'folder-claude-md' && e.filePath) return `folder-claude-md:${e.filePath}`
+  if (e.kind === 'claude-md-import' && e.via?.kind === 'claude-md-import')
+    return `claude-md-import:${e.via.importedBy}:${e.filePath}`
   if (e.kind === 'rule' && e.filePath) return `rule:${e.filePath}`
   if (e.kind === 'mcp-index' && e.filePath) return `mcp-index:${e.filePath}:${e.label}`
   return e.kind

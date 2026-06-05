@@ -14,6 +14,7 @@ const KIND_COLOR: Record<ProbeNode['kind'], string> = {
   'global-claude-md': 'bg-accent-blue',
   'project-claude-md': 'bg-blue-400',
   'folder-claude-md': 'bg-blue-300',
+  'claude-md-import': 'bg-blue-200',
   memory: 'bg-accent-purple',
   rule: 'bg-accent-amber',
   skill: 'bg-accent-emerald',

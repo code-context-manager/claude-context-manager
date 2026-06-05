@@ -235,10 +235,12 @@ function describeVia(v: import('../../../../core/types').LoadVia): string {
       return 'project CLAUDE.md'
     case 'folder-claude-md':
       return `folder CLAUDE.md (${v.chainDir})`
+    case 'claude-md-import':
+      return `@import ${v.importPath} (via ${v.importedBy})`
     case 'memory':
       return 'MEMORY.md'
-    case 'rule-always-apply':
-      return `always-apply rule (${v.rulePath})`
+    case 'rule-unconditional':
+      return `unconditional rule (${v.rulePath})`
     case 'rule-glob':
       return `rule ${v.rulePath} matched ${v.matchedGlob}`
     case 'mcp-index':

@@ -17,6 +17,17 @@ export function getGlobalSkillsDir(): string {
   return join(getClaudeHome(), 'skills')
 }
 
+/** User-scope rules dir: `~/.claude/rules/`. Unconditional rules here load in
+ *  every project; path-scoped ones are loaded on matching reads. */
+export function getUserRulesDir(): string {
+  return join(getClaudeHome(), 'rules')
+}
+
+/** Project-scope rules dir: `<project>/.claude/rules/`. */
+export function getProjectRulesDir(projectPath: string): string {
+  return join(projectPath, '.claude', 'rules')
+}
+
 /**
  * Per-user Claude config. Holds top-level (user-scope) `mcpServers` and a
  * `projects[<path>].mcpServers` block for user-private project-bound servers.

@@ -292,7 +292,11 @@ function sameVia(a: import('./types').LoadVia, b: import('./types').LoadVia): bo
   switch (a.kind) {
     case 'folder-claude-md':
       return a.chainDir === (b as typeof a).chainDir
-    case 'rule-always-apply':
+    case 'claude-md-import': {
+      const bi = b as typeof a
+      return a.importPath === bi.importPath && a.importedBy === bi.importedBy
+    }
+    case 'rule-unconditional':
       return a.rulePath === (b as typeof a).rulePath
     case 'rule-glob': {
       const bg = b as typeof a

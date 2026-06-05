@@ -11,13 +11,13 @@ describe('parseFrontmatter', () => {
   it('parses frontmatter with body', () => {
     const content = `---
 description: A test rule
-alwaysApply: true
+enabled: true
 ---
 This is the body.`
 
     const result = parseFrontmatter(content)
     expect(result.frontmatter.description).toBe('A test rule')
-    expect(result.frontmatter.alwaysApply).toBe(true)
+    expect(result.frontmatter.enabled).toBe(true)
     expect(result.body).toBe('This is the body.')
   })
 
@@ -47,15 +47,36 @@ describe('parseRuleFrontmatter', () => {
 description: Enforce naming
 paths:
   - src/components/**
-alwaysApply: false
 ---
 Use PascalCase for components.`
 
     const { meta, body } = parseRuleFrontmatter(content)
     expect(meta.description).toBe('Enforce naming')
     expect(meta.paths).toEqual(['src/components/**'])
-    expect(meta.alwaysApply).toBe(false)
     expect(body).toBe('Use PascalCase for components.')
+  })
+
+  it('strips surrounding quotes from path globs (Claude Code requires globs quoted in YAML)', () => {
+    const content = `---
+paths:
+  - "src/api/**/*.ts"
+  - 'lib/**'
+---
+body`
+    const { meta } = parseRuleFrontmatter(content)
+    expect(meta.paths).toEqual(['src/api/**/*.ts', 'lib/**'])
+  })
+
+  it('strips quotes from a scalar value but keeps quoted booleans as strings', () => {
+    const { frontmatter } = parseFrontmatter(`---
+description: "a quoted desc"
+flag: true
+quotedFlag: "true"
+---
+body`)
+    expect(frontmatter.description).toBe('a quoted desc')
+    expect(frontmatter.flag).toBe(true)
+    expect(frontmatter.quotedFlag).toBe('true')
   })
 })
 
